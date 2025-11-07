@@ -64,22 +64,23 @@
   ```
 
 ## 向玩家 LLM 发起调用（内部）
-- `POST http://<llm_host>/llm/text`
-  - 请求：`{ "prompt": "...", "terminators": [], "temperature": 0.7, "top_p": 0.95, "seed": 42 }`
-  - 响应：`{ "text": "..." }`
-- `POST http://<llm_host>/llm/choice`
-  - 请求：`{ "prompt": "...", "choices": ["A","B","C"], "seed": 42 }`
-  - 响应：`{ "index": 1, "text": "B", "meta": {} }`
+- HTTP/JSON（MVP 推荐）：
+  - `POST http://<llm_host>/llm/text`
+    - 请求：`{ "prompt": "...", "terminators": [], "temperature": 0.7, "top_p": 0.95, "seed": 42 }`
+    - 响应：`{ "text": "..." }`
+  - `POST http://<llm_host>/llm/choice`
+    - 请求：`{ "prompt": "...", "choices": ["A","B","C"], "seed": 42 }`
+    - 响应：`{ "index": 1, "text": "B", "meta": {} }`
+- gRPC（可选演进）：与 HTTP/JSON 完全等价的语义；可在高并发/低延迟场景替换，不影响上层。
 
 ## 一致性与幂等
 - 所有向 LLM 的请求包含：`tick_id`、`context_hash`；响应带回同值校验；过期/不符丢弃。
 - `action_id` 防重；Orchestrator 内部去重。
 
 ## 超时与降级
-- 默认 `deadline_ms`：2–5s（可配置）；
+- 默认 `deadline_ms`：2–5s（可配置，建议与世界节拍 5–10s 匹配）；
 - 降级顺序：默认动作 → 兜底模型 → 跳过；事件中 `warnings` 体现。
 
 ## 启动与运行
 - Dev：`uvicorn app:api --host 0.0.0.0 --port 8080 --reload`
 - Docker：基础镜像 `python:3.12-slim`，安装 `.[dev]` 依赖；健康检查 `/health`。
-

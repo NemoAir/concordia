@@ -17,6 +17,11 @@
   - 现成聊天 UI（Element）+ Bot 桥接 Orchestrator，或直接采用网关 WS 实现聊天室。
 - 基础设施：Nomad（调度）、Consul（发现/可选 mTLS 网格）、Traefik/NGINX（Ingress）、对象存储/DB（日志与检查点）。
 
+## 与 Concordia 框架的对齐（核验）
+- Observe→Act 核心循环：仓库内 `environment/engines/sequential.py` 与 `environment/engines/simultaneous.py` 明确体现“GM 生成观察 → 实体接收观察并 act → GM 解析事件并更新状态”的循环。GM 对不同实体生成的观察可不相同，符合“信息不对称”。
+- 并发引擎：`simultaneous.py` 已实现同一步对多个实体并发执行（使用 `concurrency.run_tasks`），符合“并发收集行动→统一结算”的需求。
+- 术语映射：Concordia 代码中实体统一称为 Entity（含带组件的 EntityWithComponents），本文“NPC/Actor”指同一概念。
+
 ## 数据流（每个 tick）
 1) 观察：Orchestrator 为各实体生成观察（并发），写入实体记忆；可广播到客户端。
 2) 行动：选择当步行动实体（`sequential`）或多实体（`simultaneous`）；对每个待行动 Agent 调用其 LLM 服务（HTTP，带 deadline）。
@@ -31,6 +36,18 @@
   - 可扩展：按房间做分区，配合 Redis/Kafka 做 Fanout 即可水平扩容。
   - UI 轻量：Tauri 复用现成聊天组件库（如 ChatUI、Mantine、Chakra 示例等），只做消息映射与少量状态面板。
 - 何时选 Matrix：需要现成产品级聊天体验（多端、搜索、权限、E2EE、联邦）并接受额外运维时。
+
+## 通信协议与时序（结合平台约束的更新）
+- 协议选择：
+  - MVP 推荐 HTTP/JSON（网关/Orchestrator → 玩家 LLM 服务）以降低跨语言集成复杂度；后续可替换为 gRPC，不改上层业务语义。
+  - 客户端与网关使用 WebSocket 推送（锁步 tick 的广播），避免高频轮询。
+- Tick 与超时：
+  - 受消费级 GPU 小模型推理延迟影响（常见 3–10 秒/次），世界节拍建议 5–10 秒一拍（0.1–0.2Hz）；`deadline_ms` 建议 2–5 秒，逾时降级为 IDLE/兜底/跳过。
+  - 若采用仅聊天文本呈现，节拍可按事件/触发自适应推进，不强制固定频率。
+
+## 记忆（Memory）放置与一致性（更新）
+- MVP 方案：单一事实来源在服务端。记忆与嵌入（embedder）统一由 DGM/Orchestrator 承担，保证检索一致性与可审计性；玩家 LLM 服务“只负责生成行动文本/选择”。
+- 渐进扩展（可选）：在“NPC 主机”侧运行本地反思/记忆检索，则必须通过返回“记忆增量/Memento”给 DGM 进行中心合并，或标准化远端嵌入器版本以避免漂移。
 
 ## 同步与一致性
 - 锁步推进：服务端按固定/自适应节拍推进 1 步；并发收集行动；超时走降级（默认/兜底/跳过）。

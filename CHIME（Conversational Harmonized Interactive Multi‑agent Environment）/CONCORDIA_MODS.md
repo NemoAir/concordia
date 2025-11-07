@@ -25,6 +25,10 @@
   - 兜底模型（服务端公共模型一次性代答）
   - 跳过该步
 
+4) 记忆一致性（MVP 决策）
+- 统一在 DGM/Orchestrator 侧维护记忆与嵌入（embedder）；远端 LLM 服务不持久化记忆，只返回行动文本/选择。
+- 如需远端“反思/成长”，通过返回“记忆增量/情感结晶（Memento）”到 DGM 合并；避免分叉与嵌入漂移。
+
 ## 使用示例（装配）
 ```python
 from concordia.prefabs.simulation import generic as simulation
@@ -64,4 +68,3 @@ sim = simulation.Simulation(config=config,
   - 使用 `MockModel`/`NoLanguageModel` 跑最小流程（离线）。
   - 手动替换为远端 Ollama（设置 `llm_host`），验证生成一致。
 - 性能：评估同时制 `simultaneous` 的并发表现与超时降级路径。
-
