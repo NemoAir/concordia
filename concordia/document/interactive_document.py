@@ -24,8 +24,8 @@ from concordia.document import document
 from concordia.language_model import language_model
 import numpy as np
 
-DEFAULT_MAX_CHARACTERS = 200
-DEFAULT_MAX_TOKENS = DEFAULT_MAX_CHARACTERS // 4
+DEFAULT_MAX_CHARACTERS = 4000  # Increased from 200 to handle longer responses
+DEFAULT_MAX_TOKENS = DEFAULT_MAX_CHARACTERS // 4  # = 1000 tokens
 
 DEBUG_TAG = 'debug'
 STATEMENT_TAG = 'statement'
