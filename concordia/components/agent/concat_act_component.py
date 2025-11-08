@@ -115,7 +115,7 @@ class ConcatActComponent(
         output = self.get_entity().name + ' '
       output += prompt.open_question(
           call_to_action,
-          max_tokens=2200,
+          max_tokens=4096,  # Increased from 2200 to handle longer entity responses
           answer_prefix=output,
           terminators=(),
           question_label='Exercise',
@@ -138,7 +138,7 @@ class ConcatActComponent(
         prefix = ''
       sampled_text = prompt.open_question(
           call_to_action,
-          max_tokens=2200,
+          max_tokens=4096,  # Increased from 2200 to handle longer entity responses
           answer_prefix=prefix,
       )
       self._log(sampled_text, prompt)

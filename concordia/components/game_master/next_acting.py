@@ -508,7 +508,7 @@ class NextActionSpec(
           'provided in the form of a comma-separated list of options.')
       result = prompt.open_question(
           question=self._call_to_next_action_spec.format(name=active_player),
-          max_tokens=1024,
+          max_tokens=4096,  # Increased from 1024 to handle longer action specs
           terminators=())
 
     return result

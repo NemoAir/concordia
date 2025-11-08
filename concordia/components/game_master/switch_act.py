@@ -150,7 +150,7 @@ class SwitchAct(
       chain_of_thought.statement(context)
       result = chain_of_thought.open_question(
           question=action_spec.call_to_action,
-          max_tokens=1000)
+          max_tokens=4096)  # Increased from 1000 to handle longer simulation responses
       self._log(result, chain_of_thought, action_spec)
 
     return result

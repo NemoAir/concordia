@@ -144,7 +144,7 @@ class QuestionOfRecentMemories(
     result = prompt.open_question(
         question,
         answer_prefix=self._answer_prefix.format(agent_name=agent_name),
-        max_tokens=1000,
+        max_tokens=4096,  # Increased from 1000 to handle longer responses
         terminators=self._terminators,
     )
     result = self._answer_prefix.format(agent_name=agent_name) + result
