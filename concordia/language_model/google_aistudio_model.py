@@ -72,25 +72,91 @@ DEFAULT_HISTORY = [
 ]
 
 
+# DEFAULT_SAFETY_SETTINGS = (
+#     {
+#         'category': 'HARM_CATEGORY_HARASSMENT',
+#         'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+#     },
+#     {
+#         'category': 'HARM_CATEGORY_HATE_SPEECH',
+#         'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+#     },
+#     {
+#         'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+#         'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+#     },
+#     {
+#         'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
+#         'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+#     },
+# )
+
 DEFAULT_SAFETY_SETTINGS = (
     {
         'category': 'HARM_CATEGORY_HARASSMENT',
-        'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+        'threshold': 'BLOCK_NONE',
     },
     {
         'category': 'HARM_CATEGORY_HATE_SPEECH',
-        'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+        'threshold': 'BLOCK_NONE',
     },
     {
         'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-        'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+        'threshold': 'BLOCK_NONE',
     },
     {
         'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
-        'threshold': 'BLOCK_MEDIUM_AND_ABOVE',
+        'threshold': 'BLOCK_NONE',
     },
 )
 
+# Google AI (Gemini) API 中 safety_settings 使用的所有变量。它由两部分组成：category (类别) 和 threshold (阈值)。
+
+# category (伤害类别)
+# 这是你要控制的内容类型：
+
+# 'HARM_CATEGORY_HARASSMENT'
+
+# 骚扰内容： 霸凌、侮辱、威胁或骚扰他人的负面言论。
+
+# 'HARM_CATEGORY_HATE_SPEECH'
+
+# 仇恨言论： 基于种族、性别、宗教、国籍、性取向等身份特征的歧视性或煽动仇恨的言论。
+
+# 'HARM_CATEGORY_SEXUALLY_EXPLICIT'
+
+# 露骨色情： 包含色情行为、露骨描述或意图的内容。
+
+# 'HARM_CATEGORY_DANGEROUS_CONTENT'
+
+# 危险内容： 宣传或指导自残、暴力、恐怖主义、非法活动（如制毒、造**）等行为的内容。
+
+# threshold (拦截阈值)
+# 这是你要设置的拦截严格程度：
+
+# 'BLOCK_NONE'
+
+# 不拦截： 允许所有内容通过，关闭对此类别的安全防护。
+
+# （这就是你需要的设置）
+
+# 'BLOCK_ONLY_HIGH'
+
+# 仅拦截高度可能： 只拦截 AI 高度确信是违规的内容。
+
+# 'BLOCK_MEDIUM_AND_ABOVE'
+
+# 拦截中等及以上可能： 拦截中等或高度确信是违规的内容。
+
+# （这是 Concordia 源码中的默认值）
+
+# 'BLOCK_LOW_AND_ABOVE'
+
+# 拦截低等及以上可能： 最严格的设置，拦截任何轻微可能是违规的内容。
+
+# 'HARM_BLOCK_THRESHOLD_UNSPECIFIED'
+
+# 未指定： 通常会回退到 Google 的默认设置（即 BLOCK_MEDIUM_AND_ABOVE）。
 
 class GoogleAIStudioLanguageModel(language_model.LanguageModel):
   """Language model API obtained via the Google AI Studio."""
