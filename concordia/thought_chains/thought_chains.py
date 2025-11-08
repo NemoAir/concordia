@@ -137,7 +137,7 @@ def result_to_causal_statement(
   del active_player_name
   effect = chain_of_thought.open_question(
       'Because of that, what happens as a result?',
-      max_tokens=1200,
+      max_tokens=3000,
   )
   raw_causal_statement = f'{event} Because of that, {effect}'
   causal_statement = chain_of_thought.open_question(
@@ -148,7 +148,7 @@ def result_to_causal_statement(
           'and not "The demon may have been released")\n'
           f'Statements: {raw_causal_statement}\n'
       ),
-      max_tokens=1500,
+      max_tokens=3000,
       terminators=(),
   )
   return causal_statement
@@ -173,7 +173,7 @@ def attempt_to_result(
   result = chain_of_thought.open_question(
       'What happens as a result of the attempted action?'
       ' Take into account the location and status of each player.',
-      max_tokens=1200,
+      max_tokens=3000,
       terminators=(),
   )
   raw_causal_statement = f'{action_attempt} Because of that, {result}'
@@ -197,12 +197,12 @@ def attempt_to_most_likely_outcome(
   """
   _ = chain_of_thought.open_question(
       f'Where is {active_player_name}?',
-      max_tokens=1200,
+      max_tokens=3000,
       terminators=(),
   )
   _ = chain_of_thought.open_question(
       f'What is {active_player_name} trying to do?',
-      max_tokens=1200,
+      max_tokens=3000,
       terminators=(),
   )
   _ = chain_of_thought.open_question(
@@ -216,7 +216,7 @@ def attempt_to_most_likely_outcome(
   )
   result = chain_of_thought.open_question(
       'Which outcome is the most likely?',
-      max_tokens=1200,
+      max_tokens=3000,
       terminators=(),
   )
   raw_causal_statement = f'{action_attempt} Because of that, {result}'
@@ -246,7 +246,7 @@ def result_to_who_what_where(
       ' opened the door" not "Francis could open the door" and not "The door'
       ' may have been opened"). If anyone spoke then make sure to include '
       ' exaxtly what they said verbatim.\n',
-      max_tokens=1500,
+      max_tokens=3000,
       terminators=(),
   )
   return causal_statement
@@ -279,7 +279,7 @@ def result_to_effect_caused_by_active_player(
       'and invent when necessary. For instance, if Francis opens a door to a '
       'room no one visited before then the game master should invent what is '
       'in the room using common sense and knowledge of the game world.',
-      max_tokens=1500,
+      max_tokens=3000,
       terminators=(),
   )
   return causal_statement
@@ -353,7 +353,7 @@ class AccountForAgencyOfOthers:
     _ = tmp_chain_of_thought.open_question(
         'Describe all voluntary actions taken by any individual in the '
         + 'event above.',
-        max_tokens=1500,
+        max_tokens=3000,
     )
 
     voluntary_act_of_inactive_player = tmp_chain_of_thought.yes_no_question(
@@ -433,7 +433,7 @@ class AccountForAgencyOfOthers:
           + 'attempted action? Take into account the reactions of '
           + f'{players_who_would_not_str}. Highlight how '
           + f"{active_player_name}'s action caused its actual effect.",
-          max_tokens=1500,
+          max_tokens=3000,
       )
       if self._verbose:
         print(termcolor.colored(chain_of_thought.view().text(), 'yellow'))
@@ -630,7 +630,7 @@ def get_action_category_and_player_capability(
           'directly to action categories, rather provide an appropriate answer '
           'to the question in terms that make sense within the story itself.'
       ),
-      max_tokens=1500,
+      max_tokens=3000,
       terminators=(),
   )
   return putative_event
@@ -675,7 +675,7 @@ def maybe_inject_narrative_push(
                 'Eg:\nfirst plausible event\nsecond plausible event\n'
                 'third plausible event\nfourth plausible event\n'
                 'fifth plausible event\n'),
-      max_tokens=1500,
+      max_tokens=3000,
       terminators=(),
   )
   plausible_events = plausible_events.split('\n')
@@ -689,7 +689,7 @@ def maybe_inject_narrative_push(
                 'complicate, extend, or otherwise change the meaning of 1? '
                 'Answer in the form of an in-narrative compound event that '
                 'incorporates both 1 and 2 into a single composite event.'),
-      max_tokens=1500,
+      max_tokens=3000,
       terminators=(),
   )
 
@@ -713,7 +713,7 @@ def maybe_cut_to_next_scene(
   _ = chain_of_thought.open_question(
       question=('What is the current scene about? What is the narrative '
                 'function of the latest event to occur in the scene?'),
-      max_tokens=1500,
+      max_tokens=3000,
       terminators=(),
   )
   chain_of_thought.statement(
@@ -763,7 +763,7 @@ def maybe_cut_to_next_scene(
             'later", "three days later", "next year", "many years later", '
             'or "in the far future".'
         ),
-        max_tokens=1200,
+        max_tokens=3000,
         terminators=(),
     ).strip()
     splits = next_scene_and_time_till_it_starts.split('\n')
