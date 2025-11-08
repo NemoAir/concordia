@@ -133,10 +133,14 @@ class VertexLanguageModel(language_model.LanguageModel):
     )
     try:
       response = sample.candidates[0].content.parts[0].text
-    except ValueError as e:
+    except (ValueError, IndexError, AttributeError) as e:
       print('An error occurred: ', e)
       print(f'prompt: {prompt}')
       print(f'sample: {sample}')
+      if hasattr(sample, 'candidates') and len(sample.candidates) > 0:
+        print(f'candidates: {sample.candidates}')
+        if hasattr(sample.candidates[0], 'finish_reason'):
+          print(f'finish_reason: {sample.candidates[0].finish_reason}')
       response = ''
     if self._measurements is not None:
       self._measurements.publish_datum(
@@ -165,7 +169,7 @@ class VertexLanguageModel(language_model.LanguageModel):
           f'Do not include reasoning.\n{prompt}')
       sample = self.sample_text(
           question,
-          max_tokens=256,  # This is wasteful, but Gemini blocks lower values.
+          max_tokens=2048,  # Increased to handle longer prompts. Gemini supports up to 65,536 tokens.
           temperature=temperature,
           seed=seed,
       )

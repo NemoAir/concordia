@@ -241,11 +241,37 @@ class GoogleAIStudioLanguageModel(language_model.LanguageModel):
         stream=False
     )
     try:
+      if (
+          not hasattr(sample, 'candidates')
+          or len(sample.candidates) == 0
+          or not hasattr(sample.candidates[0], 'content')
+          or not hasattr(sample.candidates[0].content, 'parts')
+          or len(sample.candidates[0].content.parts) == 0
+      ):
+        raise IndexError('No content parts in response')
       response = sample.candidates[0].content.parts[0].text
-    except ValueError as e:
+    except (ValueError, IndexError, AttributeError) as e:
       print('An error occurred: ', e)
-      print(f'prompt: {prompt}')
+      print(f'prompt length (chars): {len(prompt)}')
       print(f'sample: {sample}')
+      if hasattr(sample, 'candidates') and len(sample.candidates) > 0:
+        candidate = sample.candidates[0]
+        print(f'candidates: {sample.candidates}')
+        if hasattr(candidate, 'finish_reason'):
+          finish_reason = candidate.finish_reason
+          print(f'finish_reason: {finish_reason}')
+          if finish_reason == 2:  # MAX_TOKENS
+            print('WARNING: Response was truncated due to MAX_TOKENS limit.')
+            print(f'Consider increasing max_tokens (currently: {max_tokens})')
+        if hasattr(candidate, 'content'):
+          print(
+              'content.role:'
+              f' {candidate.content.role if hasattr(candidate.content, "role") else "N/A"}'
+          )
+          if hasattr(candidate.content, 'parts'):
+            print(f'content.parts length: {len(candidate.content.parts)}')
+      if hasattr(sample, 'usage_metadata'):
+        print(f'usage_metadata: {sample.usage_metadata}')
       response = ''
     if self._measurements is not None:
       self._measurements.publish_datum(
@@ -274,7 +300,7 @@ class GoogleAIStudioLanguageModel(language_model.LanguageModel):
           f'Do not include reasoning.\n{prompt}')
       sample = self.sample_text(
           question,
-          max_tokens=256,  # This is wasteful, but Gemini blocks lower values.
+          max_tokens=8192,  # Increased to handle longer prompts and avoid truncation. Gemini 2.5 supports up to 65,536 tokens.
           temperature=temperature,
           seed=seed,
       )
