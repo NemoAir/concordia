@@ -79,7 +79,7 @@ class AllSimilarMemories(
     )
     prompt.statement(f'Statements:\n{component_states}\n')
     prompt_summary = prompt.open_question(
-        'Summarize the statements above.', max_tokens=750
+        'Summarize the statements above.', max_tokens=2000
     )
 
     memory = self.get_entity().get_component(

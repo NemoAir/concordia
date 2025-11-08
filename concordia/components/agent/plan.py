@@ -137,7 +137,7 @@ class Plan(
               f'Write {agent_name}\'s step-by-step plan for how they intend to'
               ' accomplish their goal over the time horizon mentioned above.'
           ),
-          max_tokens=1200,
+          max_tokens=3000,
           terminators=(),
       )
 
