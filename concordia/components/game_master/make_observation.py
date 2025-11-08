@@ -56,7 +56,7 @@ class MakeObservation(entity_component.ContextComponent,
       model: The language model to use for the component.
       player_names: Names of players.
       components: Keys of components to condition the observation on.
-      call_to_make_observation: The call to action to make the observation. 
+      call_to_make_observation: The call to action to make the observation.
         Needed to extract the name of the active entity.
       reformat_observations_in_specified_style: If non-empty, the component will
         ask the model to reformat the observation to fit the style specified in
@@ -170,7 +170,7 @@ class MakeObservation(entity_component.ContextComponent,
                   f'{active_entity_name} unless absolutely necessary. Keep '
                   'the story moving forward.'
               ),
-              max_tokens=1200,
+              max_tokens=3000,
               terminators=(),
           )
 
@@ -193,7 +193,7 @@ class MakeObservation(entity_component.ContextComponent,
                   f'Reformat {active_entity_name}\'s draft observation '
                   'to fit the required format.'
               ),
-              max_tokens=1200,
+              max_tokens=3000,
               terminators=(),
           )
 

@@ -62,7 +62,7 @@ Generate a shared scenario for a first date that brings {player1} and {player2} 
 **The theme for this date is: {date_theme}.** The location, activity, and atmosphere should strongly reflect this theme.
 This scenario will serve as the premise for their dialogue.
 Describe the setting and the immediate situation leading to the dialogue.
-Creatively and with detail, describe what they are wearing, 
+Creatively and with detail, describe what they are wearing,
 elaborating on the wearing statements provided above
 and how the stated quality of the item relates to the social expectations of how to present yourself on a first date
 to paint a vivid picture of their first impressions to each other.
@@ -458,7 +458,7 @@ class DayInTheLifeInitializer(
       )
       log_key = f'{self._pre_act_label} Shared Setup ({player1}, {player2})'
 
-    scene_event = prompt.open_question(question=question, max_tokens=750)
+    scene_event = prompt.open_question(question=question, max_tokens=2000)
     p1_wearing_statement = self._player_specific_context[player1]['wearing']
 
     assert p1_wearing_statement.strip(), 'Player 1 wearing statement is empty.'
@@ -500,7 +500,7 @@ class DayInTheLifeInitializer(
     )
     aggregated_result = prompt.open_question(
         question=question,
-        max_tokens=1500,
+        max_tokens=3000,
         terminators=[],
     )
     episodes = [
