@@ -8,7 +8,7 @@ Concordia 架构与技术文档（工作区）
 
 ## 置顶 TODO（优先级从上到下）
 
-- [ ] 高层架构速读与术语统一（Entity / Component / Engine / Game Master / LanguageModel / ActionSpec）
+- [x] 高层架构速读与术语统一（Entity / Component / Engine / Game Master / LanguageModel / ActionSpec）
 - [ ] 跑通一个最小示例（examples/）并记录最短路径与依赖配置
 - [ ] 阅读与标注关键代码：
   - [ ] `concordia/agents/entity_agent.py` 与 `typing/entity_component.py`
@@ -30,6 +30,15 @@ Concordia 架构与技术文档（工作区）
 - [ ] 最佳实践：模型选择、温度/采样、Memory 配置、性能与成本权衡
 - [ ] 用例索引：把 examples 场景与核心概念一一对照
 
+## 术语统一（rolling）
+
+- **Entity**（`concordia/typing/entity.py:192`）：最小交互单元，暴露 `name/act/observe`，由引擎驱动按 `ActionSpec` 行动、并在 GM 推送观察后更新自身。
+- **ActionSpec**（`concordia/typing/entity.py:73`）：对下一步行动的合同，限定 `call_to_action`、`output_type`（FREE/CHOICE/FLOAT 及 GM 专用类型）与可选 `options/tag`，由 GM/Engine 生成并在 `Entity.act` 前后验证。
+- **Component**（`concordia/typing/entity_component.py:177`）：`EntityWithComponents` 的可插拔部件；`ContextComponent` 负责 pre/post act/observe 钩子，`ActingComponent` 基于聚合上下文产生最终行为，`ContextProcessorComponent` 则用于在多组件之间整理信息。
+- **Engine**（`concordia/environment/engine.py:27`）：封装环境循环，统一 `make_observation` → `next_acting` → `resolve` → `terminate` → `next_game_master/run_loop` 等接口，便于替换不同的回合制/并发制策略。
+- **Game Master**（`concordia/environment/engines/sequential.py:63`）：本质也是 `Entity`，但它消费 `OutputType.MAKE_OBSERVATION / NEXT_ACTING / RESOLVE` 等 ActionSpec 来主持流程：决定谁行动、如何解释行动与何时终局，并把事件写回所有实体。
+- **LanguageModel**（`concordia/language_model/language_model.py:37`）：抽象下层 LLM 能力，统一 `sample_text` 与 `sample_choice` 参数（max_tokens/temperature/top_p 等）及错误 `InvalidResponseError`，供 Entity 组件、GM 与 Engine 共享。
+
 ## 当前问题与插件化方案（WIP）
 
 1. **max token 统一治理**：新增 `plugins/token_budgeting.py` 与集中配置 `plugins/token_budget_config.json`（详见 `plugins/README.md`）。通过 `MaxTokenGuardLanguageModel` 包裹任何现有 `LanguageModel`，即可：
@@ -48,6 +57,7 @@ Concordia 架构与技术文档（工作区）
 
 ## 文档导航
 
+- Entity 体系导览：`ENTITY_SYSTEM.md`
 - 架构模块地图：`MODULES.md`
 - 运行时流程（引擎/回合/观察-行动）：`FLOW.md`
 - 论文（随附原文转存）：
