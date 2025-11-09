@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+  <meta charset="utf-8" />
+  <title>Concordia 系统架构与时序概览</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      font-family: "Inter", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      margin: 0;
+      padding: 32px;
+      line-height: 1.6;
+      background: #f7f7f9;
+      color: #111;
+    }
+    body.dark {
+      background: #0f1115;
+      color: #e6e6e6;
+    }
+    header {
+      margin-bottom: 32px;
+    }
+    h1 {
+      margin-bottom: 8px;
+      font-size: 2rem;
+    }
+    section {
+      margin-bottom: 48px;
+      padding: 24px;
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    }
+    body.dark section {
+      background: #181b22;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+    h2 {
+      margin-top: 0;
+      font-size: 1.5rem;
+    }
+    h3 {
+      margin-top: 32px;
+      font-size: 1.2rem;
+    }
+    p {
+      margin: 0 0 12px;
+    }
+    ol, ul {
+      margin: 0 0 16px 20px;
+    }
+    code {
+      font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      background: #eef2ff;
+      color: #111;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+    body.dark code {
+      background: #1f2937;
+      color: #f3f4f6;
+    }
+    figure {
+      margin: 24px 0;
+    }
+    figcaption {
+      margin-top: 8px;
+      font-size: 0.95rem;
+      color: #374151;
+    }
+    body.dark figcaption {
+      color: #d1d5db;
+    }
+    svg {
+      width: 100%;
+      max-width: 1200px;
+      height: auto;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(255,255,255,0.9), rgba(226,232,240,0.9));
+      border: 1px solid rgba(15,23,42,0.08);
+    }
+    body.dark svg {
+      background: linear-gradient(135deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9));
+      border-color: rgba(148,163,184,0.2);
+    }
+    .diagram-text {
+      font-size: 12px;
+      fill: #111;
+    }
+    body.dark .diagram-text {
+      fill: #f3f4f6;
+    }
+    .node {
+      fill: #ffffff;
+      stroke: #2563eb;
+      stroke-width: 1.5;
+      rx: 10;
+    }
+    body.dark .node {
+      fill: #111827;
+      stroke: #60a5fa;
+    }
+    .node-secondary {
+      fill: #e0f2fe;
+      stroke: #0284c7;
+    }
+    body.dark .node-secondary {
+      fill: #0f172a;
+      stroke: #22d3ee;
+    }
+    .node-tertiary {
+      fill: #fef3c7;
+      stroke: #f59e0b;
+    }
+    body.dark .node-tertiary {
+      fill: #292524;
+      stroke: #fbbf24;
+    }
+    .lifeline {
+      stroke: #94a3b8;
+      stroke-dasharray: 6 6;
+    }
+    body.dark .lifeline {
+      stroke: #475569;
+    }
+    .arrow {
+      stroke: #111;
+      stroke-width: 2;
+      fill: none;
+      marker-end: url(#arrowhead-light);
+    }
+    body.dark .arrow {
+      stroke: #f8fafc;
+      marker-end: url(#arrowhead-dark);
+    }
+    .arrow-label {
+      font-size: 12px;
+      fill: #334155;
+    }
+    body.dark .arrow-label {
+      fill: #e2e8f0;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-bottom: 16px;
+    }
+    th, td {
+      border: 1px solid rgba(15,23,42,0.1);
+      padding: 8px;
+      text-align: left;
+      font-size: 0.95rem;
+    }
+    body.dark th, body.dark td {
+      border-color: rgba(248,250,252,0.2);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Concordia 系统架构与控制循环</h1>
+    <p>
+      本文基于 Concordia 源码与官方说明（<code>README.md:1</code>），梳理 Engine→Game Master→Agent→组件→LLM 的
+      控制次序、数据流、状态机以及主要类之间的继承与组合关系。
+    </p>
+  </header>
+
+  <section id="sequence">
+    <h2>1. Agent 行为时序（Engine→GM→Agent）</h2>
+    <p>以下步骤聚焦默认顺序引擎 <code>concordia/environment/engines/sequential.py:205</code> 所驱动的单步循环。</p>
+    <ol>
+      <li>
+        <strong>终止与规则集切换：</strong> 每回合开始时，Engine 调用 GM 的 TERMINATE 组件检查是否结束，随后依据
+        <code>OutputType.NEXT_GAME_MASTER</code> 选择下一位 GM（<code>concordia/environment/engines/sequential.py:134</code>、
+        <code>concordia/components/game_master/next_game_master.py:40</code>）。
+      </li>
+      <li>
+        <strong>批量观测：</strong> Engine 为每个实体调用 GM 的 MAKE_OBSERVATION 行为并并发推送到 Agent 的
+        <code>observe</code>（<code>concordia/environment/engines/sequential.py:89</code>、
+        <code>concordia/environment/engines/sequential.py:257</code>）。GM 端由
+        <code>MakeObservation</code> 组件拼装提示并可回放事件队列（<code>concordia/components/game_master/make_observation.py:128</code>、
+        <code>concordia/components/game_master/make_observation.py:209</code>）。
+      </li>
+      <li>
+        <strong>决定下一位行动者与 ActionSpec：</strong> Engine 依次请求 GM 的
+        <code>NextActing</code>/<code>NextActionSpec</code> 组件，并使用
+        <code>action_spec_parser</code> 将字符串解析回结构化 <code>ActionSpec</code>
+        （<code>concordia/environment/engines/sequential.py:102</code>、
+        <code>concordia/environment/engine.py:101</code>、
+        <code>concordia/components/game_master/next_acting.py:40</code>）。
+      </li>
+      <li>
+        <strong>Agent act 管线：</strong> Engine 调用被选 Agent 的 <code>act</code>。Agent 先并行执行所有
+        ContextComponent 的 <code>pre_act/post_act</code> 钩子，再交由 ContextProcessor、ActingComponent 以及
+        LanguageModel 生成动作（<code>concordia/agents/entity_agent.py:120</code>、
+        <code>concordia/agents/entity_agent.py:164</code>、
+        <code>concordia/components/agent/no_op_context_processor.py:20</code>、
+        <code>concordia/components/agent/concat_act_component.py:104</code>、
+        <code>concordia/language_model/language_model.py:33</code>）。
+      </li>
+      <li>
+        <strong>事件解析与广播：</strong> Engine 把 Agent 的自然语言动作以
+        <code>[putative_event]</code> 标记写回 GM 记忆，再请求 GM 的 RESOLVE 组件产出最终结果并通过
+        <code>[event]</code> 广播（<code>concordia/environment/engines/sequential.py:145</code>、
+        <code>concordia/environment/engines/sequential.py:152</code>、
+        <code>concordia/components/game_master/event_resolution.py:130</code>）。
+      </li>
+      <li>
+        <strong>日志与扩展：</strong> 若 GM/Agent 继承 <code>EntityAgentWithLogging</code>，组件日志会被采集，方便运行时
+        调试与可视化（<code>concordia/agents/entity_agent_with_logging.py:27</code>）。
+      </li>
+    </ol>
+
+    <figure>
+      <svg viewBox="0 0 1180 520" role="img" aria-labelledby="fig-seq-title">
+        <title id="fig-seq-title">Engine→GM→Agent 行为时序</title>
+        <defs>
+          <marker id="arrowhead-light" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#111" />
+          </marker>
+          <marker id="arrowhead-dark" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#f8fafc" />
+          </marker>
+        </defs>
+        <!-- Participants -->
+        <rect class="node" x="50" y="10" width="120" height="40"></rect>
+        <text class="diagram-text" x="110" y="35" text-anchor="middle">Engine.run_loop</text>
+        <rect class="node" x="310" y="10" width="140" height="40"></rect>
+        <text class="diagram-text" x="380" y="35" text-anchor="middle">Game Master (SwitchAct)</text>
+        <rect class="node" x="580" y="10" width="140" height="40"></rect>
+        <text class="diagram-text" x="650" y="35" text-anchor="middle">Agent (EntityAgent)</text>
+        <rect class="node" x="860" y="10" width="200" height="40"></rect>
+        <text class="diagram-text" x="960" y="35" text-anchor="middle">Context Components &amp; LLM</text>
+        <!-- Lifelines -->
+        <line class="lifeline" x1="110" y1="60" x2="110" y2="500"></line>
+        <line class="lifeline" x1="380" y1="60" x2="380" y2="500"></line>
+        <line class="lifeline" x1="650" y1="60" x2="650" y2="500"></line>
+        <line class="lifeline" x1="960" y1="60" x2="960" y2="500"></line>
+        <!-- Messages -->
+        <line class="arrow" x1="110" y1="90" x2="380" y2="90"></line>
+        <text class="arrow-label" x="245" y="80">① terminate &amp; next_game_master</text>
+
+        <line class="arrow" x1="110" y1="130" x2="380" y2="130"></line>
+        <text class="arrow-label" x="245" y="120">② MAKE_OBSERVATION</text>
+
+        <line class="arrow" x1="110" y1="170" x2="650" y2="170"></line>
+        <text class="arrow-label" x="360" y="160">③ observe(observation)</text>
+
+        <line class="arrow" x1="110" y1="210" x2="380" y2="210"></line>
+        <text class="arrow-label" x="260" y="200">④ NEXT_ACTING + NEXT_ACTION_SPEC</text>
+
+        <line class="arrow" x1="110" y1="250" x2="650" y2="250"></line>
+        <text class="arrow-label" x="360" y="240">⑤ act(ActionSpec)</text>
+
+        <line class="arrow" x1="650" y1="290" x2="960" y2="290"></line>
+        <text class="arrow-label" x="805" y="280">⑥ pre_act contexts → ConcatAct → LLM</text>
+
+        <line class="arrow" x1="960" y1="320" x2="650" y2="320"></line>
+        <text class="arrow-label" x="805" y="310">⑦ action attempt</text>
+
+        <line class="arrow" x1="650" y1="360" x2="110" y2="360"></line>
+        <text class="arrow-label" x="360" y="350">⑧ return natural-language action</text>
+
+        <line class="arrow" x1="110" y1="400" x2="380" y2="400"></line>
+        <text class="arrow-label" x="250" y="390">⑨ resolve(putative_event)</text>
+
+        <line class="arrow" x1="380" y1="440" x2="960" y2="440"></line>
+        <text class="arrow-label" x="670" y="430">⑩ EventResolution ↔ memory ↔ observers</text>
+
+        <line class="arrow" x1="380" y1="480" x2="110" y2="480"></line>
+        <text class="arrow-label" x="250" y="470">⑪ EVENT broadcast &amp; log</text>
+      </svg>
+      <figcaption>
+        行为时序引用：<code>concordia/environment/engines/sequential.py:89</code>,
+        <code>concordia/environment/engines/sequential.py:205</code>,
+        <code>concordia/components/game_master/make_observation.py:128</code>,
+        <code>concordia/components/game_master/event_resolution.py:130</code>,
+        <code>concordia/agents/entity_agent.py:164</code>,
+        <code>concordia/components/agent/concat_act_component.py:104</code>。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section id="phase">
+    <h2>2. Phase 状态机循环</h2>
+    <p>
+      Component 实体的 Phase 枚举定义了合法的生命周期转移（<code>concordia/typing/entity_component.py:39</code>）。
+      <code>EntityAgent._set_phase</code> 会在每次 act/observe 调用前后执行
+      <code>check_successor</code>，确保 PRE/POST/UPDATE 顺序正确（<code>concordia/agents/entity_agent.py:97</code>、
+      <code>concordia/agents/entity_agent.py:164</code>、<code>concordia/agents/entity_agent.py:187</code>）。
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>通路</th>
+          <th>转移</th>
+          <th>触发点</th>
+          <th>关键实现</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>行动</td>
+          <td>READY → PRE_ACT → POST_ACT → UPDATE → READY</td>
+          <td>Agent act</td>
+          <td><code>concordia/agents/entity_agent.py:164</code></td>
+        </tr>
+        <tr>
+          <td>观测</td>
+          <td>READY → PRE_OBSERVE → POST_OBSERVE → UPDATE → READY</td>
+          <td>Agent observe</td>
+          <td><code>concordia/agents/entity_agent.py:187</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <figure>
+      <svg viewBox="0 0 840 420" role="img" aria-labelledby="fig-phase-title">
+        <title id="fig-phase-title">Phase 状态机</title>
+        <defs>
+          <marker id="arrowhead-light-phase" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#111" />
+          </marker>
+          <marker id="arrowhead-dark-phase" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#f8fafc" />
+          </marker>
+        </defs>
+        <rect class="node-tertiary" x="360" y="40" width="120" height="50"></rect>
+        <text class="diagram-text" x="420" y="70" text-anchor="middle">READY</text>
+
+        <rect class="node" x="160" y="170" width="120" height="50"></rect>
+        <text class="diagram-text" x="220" y="200" text-anchor="middle">PRE_ACT</text>
+        <rect class="node" x="160" y="280" width="120" height="50"></rect>
+        <text class="diagram-text" x="220" y="310" text-anchor="middle">POST_ACT</text>
+
+        <rect class="node" x="540" y="170" width="120" height="50"></rect>
+        <text class="diagram-text" x="600" y="200" text-anchor="middle">PRE_OBSERVE</text>
+        <rect class="node" x="540" y="280" width="120" height="50"></rect>
+        <text class="diagram-text" x="600" y="310" text-anchor="middle">POST_OBSERVE</text>
+
+        <rect class="node-secondary" x="360" y="340" width="120" height="50"></rect>
+        <text class="diagram-text" x="420" y="370" text-anchor="middle">UPDATE</text>
+
+        <!-- Edges -->
+        <line class="arrow" x1="420" y1="90" x2="220" y2="170" marker-end="url(#arrowhead-light-phase)"></line>
+        <text class="arrow-label" x="300" y="140">act request</text>
+        <line class="arrow" x1="220" y1="220" x2="220" y2="280" marker-end="url(#arrowhead-light-phase)"></line>
+        <line class="arrow" x1="220" y1="330" x2="420" y2="340" marker-end="url(#arrowhead-light-phase)"></line>
+
+        <line class="arrow" x1="420" y1="90" x2="600" y2="170" marker-end="url(#arrowhead-light-phase)"></line>
+        <text class="arrow-label" x="530" y="140">observe request</text>
+        <line class="arrow" x1="600" y1="220" x2="600" y2="280" marker-end="url(#arrowhead-light-phase)"></line>
+        <line class="arrow" x1="600" y1="330" x2="420" y2="340" marker-end="url(#arrowhead-light-phase)"></line>
+
+        <line class="arrow" x1="420" y1="390" x2="420" y2="90" marker-end="url(#arrowhead-light-phase)"></line>
+        <text class="arrow-label" x="440" y="230">ready for next input</text>
+      </svg>
+      <figcaption>
+        Phase 状态机引用：<code>concordia/typing/entity_component.py:39</code>,
+        <code>concordia/agents/entity_agent.py:97</code>,
+        <code>concordia/agents/entity_agent.py:164</code>,
+        <code>concordia/agents/entity_agent.py:187</code>。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section id="data-flow">
+    <h2>3. 数据流概览（GM/Engine/Agent/组件/LLM）</h2>
+    <p>
+      以下数据流描述 Engine 循环、Game Master 组件、Agent 组件以及共享数据层之间的主要接口：
+    </p>
+    <ul>
+      <li>
+        <strong>ActionSpec 协议：</strong> 所有 Engine→Entity 请求都通过 <code>ActionSpec</code>
+        描述输出类型，支持 FREE/CHOICE/FLOAT 以及 GM 专用类型（<code>concordia/typing/entity.py:26</code>、
+        <code>concordia/typing/entity.py:74</code>）。
+      </li>
+      <li>
+        <strong>Game Master 组件集：</strong> Prefab 把记忆、说明书、事件回放、NextActing/NextActionSpec、EventResolution
+        等 ContextComponent 注册到 GM（<code>concordia/prefabs/game_master/generic.py:101</code>、<code>concordia/prefabs/game_master/generic.py:142</code>、<code>concordia/prefabs/game_master/generic.py:233</code>、<code>concordia/prefabs/game_master/generic.py:246</code>），
+        SwitchAct 依据 ActionSpec 类型把请求路由至对应组件（<code>concordia/components/game_master/switch_act.py:48</code>）。
+      </li>
+      <li>
+        <strong>Agent 组件网：</strong> Agent 保存任意数量的 ContextComponent（记忆、观察窗口、计划、报告等），可共享
+        <code>ActionSpecIgnored</code> 结果彼此引用（<code>concordia/components/agent/action_spec_ignored.py:26</code>）。
+        ContextProcessor 默认空操作，也可实现链式处理器（<code>concordia/components/agent/no_op_context_processor.py:20</code>）。
+      </li>
+      <li>
+        <strong>记忆与观测：</strong> 观察通过 <code>ObservationToMemory</code> 写入记忆组件，记忆组件再委托
+        <code>AssociativeMemoryBank</code> 执行近似搜索（<code>concordia/components/agent/observation.py:28</code>、
+        <code>concordia/components/agent/memory.py:113</code>、
+        <code>concordia/associative_memory/basic_associative_memory.py:34</code>）。
+      </li>
+      <li>
+        <strong>LLM 调度：</strong> Game Master 与 Agent 的 Acting/Context 组件均通过
+        <code>InteractiveDocument + LanguageModel</code> 调用外部 LLM（<code>concordia/language_model/language_model.py:33</code>）。
+      </li>
+      <li>
+        <strong>事件回写：</strong> GM 的 EventResolution 会把 Putative Event 从记忆中取出、运行思维链并在需要时把结果放入
+        MakeObservation 队列，形成闭环（<code>concordia/components/game_master/event_resolution.py:130</code>、
+        <code>concordia/components/game_master/make_observation.py:209</code>）。
+      </li>
+    </ul>
+
+    <figure>
+      <svg viewBox="0 0 1180 520" role="img" aria-labelledby="fig-flow-title">
+        <title id="fig-flow-title">核心数据流</title>
+        <!-- Engine -->
+        <rect class="node" x="40" y="200" width="170" height="120"></rect>
+        <text class="diagram-text" x="125" y="235" text-anchor="middle">Engine (Sequential/Simultaneous)</text>
+        <text class="diagram-text" x="125" y="260" text-anchor="middle">run_loop / action_spec_parser</text>
+        <text class="diagram-text" x="125" y="285" text-anchor="middle">ActionSpec requests</text>
+
+        <!-- GM -->
+        <rect class="node-secondary" x="270" y="100" width="280" height="320"></rect>
+        <text class="diagram-text" x="410" y="130" text-anchor="middle">Game Master (EntityAgentWithLogging)</text>
+        <rect class="node" x="290" y="150" width="120" height="60"></rect>
+        <text class="diagram-text" x="350" y="180" text-anchor="middle">MakeObservation</text>
+        <rect class="node" x="430" y="150" width="120" height="60"></rect>
+        <text class="diagram-text" x="490" y="180" text-anchor="middle">NextActing / Spec</text>
+        <rect class="node" x="290" y="230" width="120" height="60"></rect>
+        <text class="diagram-text" x="350" y="260" text-anchor="middle">NextGameMaster</text>
+        <rect class="node" x="430" y="230" width="120" height="60"></rect>
+        <text class="diagram-text" x="490" y="260" text-anchor="middle">Terminate</text>
+        <rect class="node" x="360" y="310" width="120" height="60"></rect>
+        <text class="diagram-text" x="420" y="340" text-anchor="middle">EventResolution</text>
+
+        <!-- Agent -->
+        <rect class="node-secondary" x="610" y="80" width="260" height="360"></rect>
+        <text class="diagram-text" x="740" y="110" text-anchor="middle">Agent (EntityAgent)</text>
+        <rect class="node" x="630" y="140" width="100" height="60"></rect>
+        <text class="diagram-text" x="680" y="170" text-anchor="middle">ContextProcessor</text>
+        <rect class="node" x="750" y="130" width="100" height="80"></rect>
+        <text class="diagram-text" x="800" y="160" text-anchor="middle">ActingComponent</text>
+        <rect class="node" x="630" y="230" width="220" height="130"></rect>
+        <text class="diagram-text" x="740" y="260" text-anchor="middle">ContextComponents</text>
+        <text class="diagram-text" x="740" y="285" text-anchor="middle">(Memory, Observations, Plans…)</text>
+
+        <!-- LM & Memory -->
+        <rect class="node-tertiary" x="920" y="120" width="190" height="120"></rect>
+        <text class="diagram-text" x="1015" y="160" text-anchor="middle">LanguageModel</text>
+        <text class="diagram-text" x="1015" y="185" text-anchor="middle">sample_text / sample_choice</text>
+        <rect class="node-tertiary" x="920" y="280" width="190" height="120"></rect>
+        <text class="diagram-text" x="1015" y="320" text-anchor="middle">AssociativeMemoryBank</text>
+        <text class="diagram-text" x="1015" y="345" text-anchor="middle">add / retrieve_associative</text>
+
+        <!-- Arrows -->
+        <line class="arrow" x1="210" y1="240" x2="270" y2="240"></line>
+        <text class="arrow-label" x="240" y="225">ActionSpec (MAKE_OBS/NEXT/RESOLVE)</text>
+
+        <line class="arrow" x1="550" y1="240" x2="610" y2="240"></line>
+        <text class="arrow-label" x="580" y="225">Observation &amp; ActionSpec</text>
+
+        <line class="arrow" x1="740" y1="370" x2="1015" y2="370"></line>
+        <text class="arrow-label" x="880" y="360">ObservationToMemory / Memories</text>
+
+        <line class="arrow" x1="1015" y1="330" x2="420" y2="370"></line>
+        <text class="arrow-label" x="760" y="350">PUTATIVE_EVENT scan</text>
+
+        <line class="arrow" x1="740" y1="180" x2="1015" y2="180"></line>
+        <text class="arrow-label" x="880" y="170">Prompt → LLM → Response</text>
+
+        <line class="arrow" x1="610" y1="200" x2="550" y2="200"></line>
+        <text class="arrow-label" x="580" y="190">Action attempt</text>
+
+        <line class="arrow" x1="420" y1="320" x2="1015" y2="320"></line>
+        <text class="arrow-label" x="730" y="305">EventResolution chain-of-thought</text>
+
+        <line class="arrow" x1="420" y1="160" x2="210" y2="160"></line>
+        <text class="arrow-label" x="320" y="145">Observations / Events</text>
+      </svg>
+      <figcaption>
+        数据流引用：<code>concordia/environment/engine.py:101</code>,
+        <code>concordia/environment/engines/sequential.py:205</code>,
+        <code>concordia/prefabs/game_master/generic.py:101</code>,
+        <code>concordia/components/game_master/switch_act.py:48</code>,
+        <code>concordia/components/agent/memory.py:113</code>,
+        <code>concordia/associative_memory/basic_associative_memory.py:34</code>,
+        <code>concordia/language_model/language_model.py:33</code>。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section id="classes">
+    <h2>4. 系统类继承与组合关系</h2>
+    <p>
+      Concordia 把 “可行动/可观察的实体” 与 “控制回路” 分离：
+    </p>
+    <ul>
+      <li>
+        <strong>实体层：</strong> <code>Entity</code> → <code>EntityWithComponents</code> →
+        <code>EntityAgent</code> → <code>EntityAgentWithLogging</code>
+        （<code>concordia/typing/entity.py:117</code>、
+        <code>concordia/typing/entity_component.py:211</code>、
+        <code>concordia/agents/entity_agent.py:35</code>、
+        <code>concordia/agents/entity_agent_with_logging.py:27</code>）。
+      </li>
+      <li>
+        <strong>Engine 层：</strong> <code>Engine</code> 是抽象基类，Sequential/Simultaneous/Parallel/SequentialQuestionnaire
+        等实现不同互动模式（<code>concordia/environment/engine.py:27</code>、
+        <code>concordia/environment/engines/sequential.py:63</code>,
+        <code>concordia/environment/engines/simultaneous.py:63</code>,
+        <code>concordia/environment/engines/parallel_questionnaire.py:53</code>,
+        <code>concordia/environment/engines/sequential_questionnaire.py:52</code>）。
+      </li>
+      <li>
+        <strong>Prefab 构建：</strong> <code>Prefab</code> 把 LanguageModel 与 MemoryBank 注入，返回实体实例。
+        例如 GM Prefab 通过 SwitchAct + 组件表搭装 GM（<code>concordia/typing/prefab.py:35</code>、
+        <code>concordia/prefabs/game_master/generic.py:32</code>、
+        <code>concordia/prefabs/game_master/generic.py:267</code>）。
+      </li>
+      <li>
+        <strong>组件体系：</strong> ContextComponent、ActingComponent、ContextProcessor 形成“可插拔大脑”。
+        GM 组件（MakeObservation、NextActing、EventResolution）与 Agent 组件（Memory、Observation、Plan 等）都依此抽象
+        （<code>concordia/typing/entity_component.py:211</code>、
+        <code>concordia/typing/entity_component.py:298</code>、
+        <code>concordia/typing/entity_component.py:324</code>）。
+      </li>
+    </ul>
+
+    <figure>
+      <svg viewBox="0 0 1180 540" role="img" aria-labelledby="fig-class-title">
+        <title id="fig-class-title">类继承与组合</title>
+        <!-- Entity hierarchy -->
+        <rect class="node" x="80" y="40" width="200" height="60"></rect>
+        <text class="diagram-text" x="180" y="75" text-anchor="middle">entity.Entity</text>
+        <rect class="node" x="80" y="140" width="200" height="60"></rect>
+        <text class="diagram-text" x="180" y="175" text-anchor="middle">entity_component.EntityWithComponents</text>
+        <rect class="node" x="80" y="240" width="200" height="60"></rect>
+        <text class="diagram-text" x="180" y="275" text-anchor="middle">agents.EntityAgent</text>
+        <rect class="node" x="80" y="340" width="200" height="60"></rect>
+        <text class="diagram-text" x="180" y="375" text-anchor="middle">EntityAgentWithLogging</text>
+        <line class="arrow" x1="180" y1="100" x2="180" y2="140"></line>
+        <line class="arrow" x1="180" y1="200" x2="180" y2="240"></line>
+        <line class="arrow" x1="180" y1="300" x2="180" y2="340"></line>
+
+        <!-- Engine hierarchy -->
+        <rect class="node" x="420" y="40" width="200" height="60"></rect>
+        <text class="diagram-text" x="520" y="75" text-anchor="middle">environment.Engine</text>
+        <rect class="node-secondary" x="380" y="140" width="120" height="60"></rect>
+        <text class="diagram-text" x="440" y="175" text-anchor="middle">Sequential</text>
+        <rect class="node-secondary" x="520" y="140" width="120" height="60"></rect>
+        <text class="diagram-text" x="580" y="175" text-anchor="middle">Simultaneous</text>
+        <rect class="node-secondary" x="380" y="220" width="120" height="60"></rect>
+        <text class="diagram-text" x="440" y="255" text-anchor="middle">ParallelQuestionnaire</text>
+        <rect class="node-secondary" x="520" y="220" width="120" height="60"></rect>
+        <text class="diagram-text" x="580" y="255" text-anchor="middle">SequentialQuestionnaire</text>
+        <line class="arrow" x1="520" y1="100" x2="440" y2="140"></line>
+        <line class="arrow" x1="520" y1="100" x2="580" y2="140"></line>
+        <line class="arrow" x1="520" y1="100" x2="440" y2="220"></line>
+        <line class="arrow" x1="520" y1="100" x2="580" y2="220"></line>
+
+        <!-- Prefab and GM -->
+        <rect class="node" x="760" y="40" width="200" height="60"></rect>
+        <text class="diagram-text" x="860" y="75" text-anchor="middle">typing.Prefab</text>
+        <rect class="node" x="760" y="140" width="200" height="60"></rect>
+        <text class="diagram-text" x="860" y="175" text-anchor="middle">prefabs.game_master.GameMaster</text>
+        <rect class="node" x="760" y="240" width="200" height="60"></rect>
+        <text class="diagram-text" x="860" y="275" text-anchor="middle">EntityAgentWithLogging</text>
+        <line class="arrow" x1="860" y1="100" x2="860" y2="140"></line>
+        <line class="arrow" x1="860" y1="200" x2="860" y2="240"></line>
+
+        <!-- Components relationships -->
+        <rect class="node" x="1020" y="120" width="120" height="60"></rect>
+        <text class="diagram-text" x="1080" y="155" text-anchor="middle">ContextComponent</text>
+        <rect class="node" x="1020" y="210" width="120" height="60"></rect>
+        <text class="diagram-text" x="1080" y="245" text-anchor="middle">ActingComponent</text>
+        <rect class="node" x="1020" y="300" width="120" height="60"></rect>
+        <text class="diagram-text" x="1080" y="335" text-anchor="middle">ContextProcessor</text>
+        <line class="arrow" x1="1080" y1="180" x2="1080" y2="210"></line>
+        <line class="arrow" x1="1080" y1="270" x2="1080" y2="300"></line>
+
+        <line class="arrow" x1="200" y1="360" x2="1020" y2="330"></line>
+        <text class="arrow-label" x="620" y="320">has ContextComponents / Processor / ActComponent</text>
+        <line class="arrow" x1="880" y1="260" x2="520" y2="220"></line>
+        <text class="arrow-label" x="720" y="230">participates in Engine loop</text>
+      </svg>
+      <figcaption>
+        类关系引用：<code>concordia/typing/entity.py:117</code>,
+        <code>concordia/typing/entity_component.py:211</code>,
+        <code>concordia/agents/entity_agent.py:35</code>,
+        <code>concordia/agents/entity_agent_with_logging.py:27</code>,
+        <code>concordia/environment/engine.py:27</code>,
+        <code>concordia/environment/engines/sequential.py:63</code>,
+        <code>concordia/typing/prefab.py:35</code>,
+        <code>concordia/prefabs/game_master/generic.py:32</code>。
+      </figcaption>
+    </figure>
+  </section>
+
+  <section id="extras">
+    <h2>5. 其他关键架构/时序图</h2>
+
+    <article>
+      <h3>5.1 Game Master 组件流水线</h3>
+      <p>
+        默认 GM Prefab 通过一个组件表驱动 SwitchAct：指令/示例/角色信息提供语境，
+        <code>DisplayEvents</code> 与 <code>AllSimilarMemories</code> 提供剧情补全，
+        <code>MakeObservation</code> 生成玩家视角叙述，<code>NextActing/NextActionSpec</code> 控制行动节奏，
+        <code>EventResolution</code> 将 Putative Event 转译为正式事件并可回写观察队列（
+        <code>concordia/prefabs/game_master/generic.py:101</code>,
+        <code>concordia/prefabs/game_master/generic.py:142</code>,
+        <code>concordia/prefabs/game_master/generic.py:170</code>,
+        <code>concordia/prefabs/game_master/generic.py:223</code>,
+        <code>concordia/components/game_master/event_resolution.py:130</code>）。
+      </p>
+      <figure>
+        <svg viewBox="0 0 1180 420" role="img" aria-labelledby="fig-gm-pipeline">
+          <title id="fig-gm-pipeline">Game Master 组件流水线</title>
+          <rect class="node" x="40" y="60" width="180" height="80"></rect>
+          <text class="diagram-text" x="130" y="95" text-anchor="middle">Instructions</text>
+          <text class="diagram-text" x="130" y="115" text-anchor="middle">Examples / PlayerCharacters</text>
+
+          <rect class="node" x="260" y="40" width="200" height="120"></rect>
+          <text class="diagram-text" x="360" y="80" text-anchor="middle">DisplayEvents</text>
+          <text class="diagram-text" x="360" y="105" text-anchor="middle">(scene recap)</text>
+
+          <rect class="node" x="500" y="40" width="200" height="120"></rect>
+          <text class="diagram-text" x="600" y="80" text-anchor="middle">AllSimilarMemories</text>
+          <text class="diagram-text" x="600" y="105" text-anchor="middle">Relevant background</text>
+
+          <rect class="node" x="740" y="40" width="180" height="120"></rect>
+          <text class="diagram-text" x="830" y="80" text-anchor="middle">MakeObservation</text>
+          <text class="diagram-text" x="830" y="105" text-anchor="middle">Queue-aware</text>
+
+          <rect class="node" x="960" y="40" width="180" height="120"></rect>
+          <text class="diagram-text" x="1050" y="80" text-anchor="middle">NextActing / NextActionSpec</text>
+
+          <rect class="node-secondary" x="280" y="220" width="220" height="140"></rect>
+          <text class="diagram-text" x="390" y="260" text-anchor="middle">EventResolution (thought chains)</text>
+
+          <rect class="node-tertiary" x="620" y="220" width="220" height="140"></rect>
+          <text class="diagram-text" x="730" y="260" text-anchor="middle">SwitchAct (ActingComponent)</text>
+          <text class="diagram-text" x="730" y="285" text-anchor="middle">routes ActionSpec → component output</text>
+
+          <!-- Arrows -->
+          <line class="arrow" x1="220" y1="100" x2="260" y2="100"></line>
+          <line class="arrow" x1="460" y1="100" x2="500" y2="100"></line>
+          <line class="arrow" x1="700" y1="100" x2="740" y2="100"></line>
+          <line class="arrow" x1="920" y1="100" x2="960" y2="100"></line>
+          <line class="arrow" x1="360" y1="160" x2="360" y2="220"></line>
+          <line class="arrow" x1="600" y1="160" x2="600" y2="220"></line>
+          <line class="arrow" x1="830" y1="160" x2="830" y2="220"></line>
+          <line class="arrow" x1="1050" y1="160" x2="830" y2="220"></line>
+          <line class="arrow" x1="500" y1="290" x2="620" y2="290"></line>
+          <line class="arrow" x1="900" y1="290" x2="1040" y2="120"></line>
+        </svg>
+        <figcaption>
+          GM 组件引用：<code>concordia/prefabs/game_master/generic.py:101</code>,
+          <code>concordia/prefabs/game_master/generic.py:142</code>,
+          <code>concordia/prefabs/game_master/generic.py:170</code>,
+          <code>concordia/prefabs/game_master/generic.py:223</code>,
+          <code>concordia/components/game_master/switch_act.py:48</code>。
+        </figcaption>
+      </figure>
+    </article>
+
+    <article>
+      <h3>5.2 记忆与观测反馈闭环</h3>
+      <p>
+        观测通过 <code>ObservationToMemory</code> 写入记忆；Agent act 时 Memory/Observation 组件把最近或相似记忆提供给
+        ActingComponent，LLM 输出被 Engine 送入 GM，GM 的 EventResolution 再次访问记忆并可能触发通知，从而形成闭环
+        （<code>concordia/components/agent/observation.py:28</code>、
+        <code>concordia/components/agent/memory.py:113</code>、
+        <code>concordia/components/game_master/event_resolution.py:130</code>、
+        <code>concordia/components/game_master/make_observation.py:209</code>）。
+      </p>
+      <figure>
+        <svg viewBox="0 0 1180 420" role="img" aria-labelledby="fig-memory-loop">
+          <title id="fig-memory-loop">记忆与观测反馈闭环</title>
+          <rect class="node" x="60" y="80" width="200" height="80"></rect>
+          <text class="diagram-text" x="160" y="120" text-anchor="middle">Engine observe()</text>
+
+          <rect class="node" x="320" y="60" width="220" height="120"></rect>
+          <text class="diagram-text" x="430" y="110" text-anchor="middle">Agent.observe → ObservationToMemory</text>
+
+          <rect class="node-tertiary" x="600" y="40" width="220" height="140"></rect>
+          <text class="diagram-text" x="710" y="90" text-anchor="middle">AssociativeMemory</text>
+
+          <rect class="node" x="320" y="220" width="220" height="120"></rect>
+          <text class="diagram-text" x="430" y="270" text-anchor="middle">Agent act()
+ContextComponents</text>
+
+          <rect class="node" x="60" y="230" width="200" height="100"></rect>
+          <text class="diagram-text" x="160" y="280" text-anchor="middle">Action → Engine</text>
+
+          <rect class="node-secondary" x="600" y="220" width="220" height="120"></rect>
+          <text class="diagram-text" x="710" y="270" text-anchor="middle">Game Master EventResolution</text>
+
+          <rect class="node" x="920" y="220" width="200" height="120"></rect>
+          <text class="diagram-text" x="1020" y="270" text-anchor="middle">MakeObservation queue</text>
+
+          <!-- arrows -->
+          <line class="arrow" x1="260" y1="120" x2="320" y2="120"></line>
+          <text class="arrow-label" x="290" y="105">Observation text</text>
+          <line class="arrow" x1="540" y1="120" x2="600" y2="120"></line>
+          <text class="arrow-label" x="570" y="105">ObservationToMemory.add</text>
+          <line class="arrow" x1="710" y1="180" x2="430" y2="220"></line>
+          <text class="arrow-label" x="570" y="205">retrieve_recent / associative</text>
+          <line class="arrow" x1="540" y1="280" x2="600" y2="280"></line>
+          <text class="arrow-label" x="570" y="265">Putative action</text>
+          <line class="arrow" x1="820" y1="280" x2="920" y2="280"></line>
+          <text class="arrow-label" x="870" y="265">event_statement</text>
+          <line class="arrow" x1="920" y1="320" x2="160" y2="320"></line>
+          <text class="arrow-label" x="520" y="305">Queued observation → next cycle</text>
+        </svg>
+        <figcaption>
+          记忆闭环引用：<code>concordia/components/agent/observation.py:28</code>,
+          <code>concordia/components/agent/memory.py:113</code>,
+          <code>concordia/components/game_master/event_resolution.py:130</code>,
+          <code>concordia/components/game_master/make_observation.py:209</code>。
+        </figcaption>
+      </figure>
+    </article>
+  </section>
+</body>
+</html>
