@@ -30,6 +30,22 @@ Concordia 架构与技术文档（工作区）
 - [ ] 最佳实践：模型选择、温度/采样、Memory 配置、性能与成本权衡
 - [ ] 用例索引：把 examples 场景与核心概念一一对照
 
+## 当前问题与插件化方案（WIP）
+
+1. **max token 统一治理**：新增 `plugins/token_budgeting.py` 与集中配置 `plugins/token_budget_config.json`（详见 `plugins/README.md`）。通过 `MaxTokenGuardLanguageModel` 包裹任何现有 `LanguageModel`，即可：
+   - 从 JSON 读取各组件的 `max_tokens`，对照 `concordia/components/agent/concat_act_component.py`、`concordia/document/interactive_document.py` 等硬编码数值做统一裁剪；
+   - 记录调用栈与最终预算，定位是哪一个组件触发 API 报错；
+   - 在溢出时抛出 `TokenBudgetError`，配合日志即可快速追溯；下一步会把日志输出格式纳入 `FLOW.md`。
+2. **世界语言自动流转**：`plugins/language_policy.py`（详见 `plugins/README.md`）自带
+   `LanguagePolicyStore`、`LanguageRoutingModel` 与 `LanguageAwareEntityAgent`：
+   - 通过 `shared_memories` 侦测世界设定语言（当前实现先区分中/英，可按需扩展）；
+   - 用 contextvars 维护“当前行动的实体”，在不改动核心类的前提下，把语言偏好传给模型包装器；
+   - 所有角色默认继承世界语言，若 Prefab 参数指定其它语言，可调用 `override_for_entity` 保留角色特性。
+3. **执行节奏**：
+   - 将 tutorial 场景切换到新的 model wrapper + agent，以便记录真实的 token 消耗与语言切换行为；
+   - 依据日志反推 `token_budget_config.json` 的上限，并补充「超限后的重试/降级策略」；
+   - 在 `MODULES.md` / `FLOW.md` 中描述数据流的语言/Token 控制点，方便推演未来的不可控场景。
+
 ## 文档导航
 
 - 架构模块地图：`MODULES.md`
@@ -99,4 +115,3 @@ Concordia 架构与技术文档（工作区）
 
 ---
 本页为“任务驱动”的索引页；详见 `MODULES.md` 与 `FLOW.md` 的细化解释与代码引用。
-

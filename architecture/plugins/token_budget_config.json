@@ -1,0 +1,27 @@
+{
+  "global_context_window": 8192,
+  "default_max_tokens": 1200,
+  "safety_margin": 512,
+  "rules": [
+    {
+      "name": "Act concat component",
+      "match": "components.agent.concat_act_component",
+      "max_tokens": 1100
+    },
+    {
+      "name": "Thought chains long form",
+      "match": "thought_chains",
+      "max_tokens": 1500
+    },
+    {
+      "name": "Game master adjudication",
+      "match": "prefabs.game_master",
+      "max_tokens": 800
+    },
+    {
+      "name": "Associative memory retrieval",
+      "match": "components.agent.memory",
+      "max_tokens": 600
+    }
+  ]
+}
