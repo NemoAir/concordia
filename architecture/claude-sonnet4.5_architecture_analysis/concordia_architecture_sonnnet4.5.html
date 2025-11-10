@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concordia 框架架构文档</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 40px;
+            border-left: 5px solid #3498db;
+            padding-left: 15px;
+        }
+        h3 {
+            color: #7f8c8d;
+            margin-top: 25px;
+        }
+        .diagram {
+            background: white;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .code-ref {
+            background: #ecf0f1;
+            border-left: 4px solid #e74c3c;
+            padding: 10px 15px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        .phase {
+            display: inline-block;
+            padding: 8px 16px;
+            margin: 5px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .phase-ready { background: #95a5a6; color: white; }
+        .phase-preact { background: #3498db; color: white; }
+        .phase-postact { background: #9b59b6; color: white; }
+        .phase-preobs { background: #1abc9c; color: white; }
+        .phase-postobs { background: #16a085; color: white; }
+        .phase-update { background: #e67e22; color: white; }
+        .arrow {
+            display: inline-block;
+            margin: 0 10px;
+            color: #e74c3c;
+            font-weight: bold;
+            font-size: 1.2em;
+        }
+        .component-box {
+            border: 2px solid #95a5a6;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            background: #ffffff;
+        }
+        .component-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 1.1em;
+        }
+        .hierarchy {
+            margin-left: 20px;
+            border-left: 2px solid #bdc3c7;
+            padding-left: 15px;
+        }
+        .class-name {
+            font-family: 'Courier New', monospace;
+            background: #e8f4f8;
+            padding: 2px 8px;
+            border-radius: 3px;
+            color: #2980b9;
+        }
+        .sequence-step {
+            background: linear-gradient(to right, #ecf0f1, #ffffff);
+            border-left: 4px solid #3498db;
+            padding: 12px 20px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .sequence-number {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: #3498db;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 12px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+        }
+        th, td {
+            border: 1px solid #bdc3c7;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background: #34495e;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        .note {
+            background: #fff9e6;
+            border: 1px solid #f39c12;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .note::before {
+            content: "💡 ";
+            font-size: 1.2em;
+        }
+        pre {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 0.9em;
+        }
+        .dataflow-box {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 8px;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            background: white;
+            text-align: center;
+            min-width: 100px;
+        }
+        .flow-arrow {
+            font-size: 1.5em;
+            color: #e74c3c;
+            margin: 0 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 Concordia 框架架构文档</h1>
+
+    <div class="note">
+        <strong>文档说明：</strong>本文档基于 Concordia 框架源代码完整分析生成，包含详细的架构图、时序图、数据流图和代码引用。所有信息均来自 concordia 文件夹的源码实现。
+    </div>
+
+    <h2>📋 目录</h2>
+    <ol>
+        <li><a href="#class-hierarchy">系统类继承与组合关系架构</a></li>
+        <li><a href="#phase-state-machine">Phase 状态机循环机制</a></li>
+        <li><a href="#agent-behavior-sequence">Agent 行为调用时序</a></li>
+        <li><a href="#data-flow">数据流概览</a></li>
+        <li><a href="#component-details">组件系统详解</a></li>
+    </ol>
+
+    <h2 id="class-hierarchy">1. 系统类继承与组合关系架构</h2>
+
+    <div class="diagram">
+        <h3>1.1 Entity 继承层次结构</h3>
+        <div class="component-box">
+            <div class="component-title">Entity（抽象基类）</div>
+            <div class="code-ref">📁 concordia/typing/entity.py:192-236</div>
+            <ul>
+                <li><strong>核心方法：</strong>
+                    <ul>
+                        <li><span class="class-name">act(action_spec: ActionSpec) → str</span></li>
+                        <li><span class="class-name">observe(observation: str) → None</span></li>
+                        <li><span class="class-name">name: str</span> (cached_property)</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <div class="hierarchy">
+                <div class="component-box">
+                    <div class="component-title">EntityWithLogging(Entity)</div>
+                    <div class="code-ref">📁 concordia/typing/entity.py:238-244</div>
+                    <ul>
+                        <li><span class="class-name">get_last_log() → dict[str, Any]</span></li>
+                    </ul>
+                </div>
+
+                <div class="component-box">
+                    <div class="component-title">EntityAgent(Entity)</div>
+                    <div class="code-ref">📁 concordia/agents/entity_agent.py:40-399</div>
+                    <ul>
+                        <li><strong>组合关系：</strong>
+                            <ul>
+                                <li>包含多个 <span class="class-name">ContextComponent</span></li>
+                                <li>包含一个 <span class="class-name">ActingComponent</span></li>
+                                <li>包含一个 <span class="class-name">ContextProcessorComponent</span></li>
+                            </ul>
+                        </li>
+                        <li><strong>职责：</strong>管理 Phase 转换和组件调用</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>1.2 Component 继承层次结构</h3>
+
+        <div class="component-box">
+            <div class="component-title">ContextComponent（上下文组件）</div>
+            <div class="code-ref">📁 concordia/typing/entity_component.py:192-250</div>
+            <p><strong>作用：</strong>在 PRE_ACT 阶段提供上下文信息给 ActingComponent</p>
+
+            <div class="hierarchy">
+                <h4>ActionSpecIgnored（很多组件的基类）</h4>
+                <div class="code-ref">📁 concordia/components/agent/action_spec_ignored.py:26-101</div>
+                <p><strong>特点：</strong>忽略 action_spec，实现 pre_act 值缓存，子类只需实现 _make_pre_act_value()</p>
+
+                <div class="hierarchy">
+                    <h4>Constant - 常量组件</h4>
+                    <div class="code-ref">📁 concordia/components/agent/constant.py:23-59</div>
+                    <ul>
+                        <li>Instructions（Agent） - 📁 concordia/components/agent/instructions.py:22-44</li>
+                        <li>Instructions（GM） - 📁 concordia/components/game_master/instructions.py:72-100</li>
+                        <li>PlayerCharacters - 📁 concordia/components/game_master/instructions.py:103-113</li>
+                    </ul>
+
+                    <h4>Plan - 计划组件</h4>
+                    <div class="code-ref">📁 concordia/components/agent/plan.py:27-163</div>
+                    <p>使用 LLM 生成和更新智能体的计划</p>
+
+                    <h4>QuestionOfRecentMemories 系列</h4>
+                    <div class="code-ref">📁 concordia/components/agent/question_of_recent_memories.py:51-400</div>
+                    <ul>
+                        <li>SelfPerception - "智能体是什么样的人？"</li>
+                        <li>SituationPerception - "当前是什么情况？"</li>
+                        <li>PersonBySituation - "这样的人会做什么？"</li>
+                        <li>AvailableOptionsPerception - "有哪些可用行动？"</li>
+                        <li>BestOptionPerception - "哪个行动最好？"</li>
+                    </ul>
+
+                    <h4>Observation 系列</h4>
+                    <div class="code-ref">📁 concordia/components/agent/observation.py:29-177</div>
+                    <ul>
+                        <li>ObservationToMemory - 在 pre_observe 中将观察添加到 memory</li>
+                        <li>LastNObservations - 检索最近 N 个观察</li>
+                        <li>ObservationsSinceLastPreAct - 检索自上次 pre_act 以来的观察</li>
+                    </ul>
+                </div>
+
+                <h4>Memory 组件</h4>
+                <div class="code-ref">📁 concordia/components/agent/memory.py:32-426</div>
+                <ul>
+                    <li>Memory - 基础记忆组件（抽象基类）</li>
+                    <li>AssociativeMemory - 使用 AssociativeMemoryBank 的联想记忆</li>
+                    <li>ListMemory - 使用简单列表的记忆</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="component-box">
+            <div class="component-title">ActingComponent（行动组件）</div>
+            <div class="code-ref">📁 concordia/typing/entity_component.py:253-297</div>
+            <p><strong>作用：</strong>聚合所有上下文，使用 LLM 生成行动</p>
+
+            <div class="hierarchy">
+                <h4>ConcatActComponent</h4>
+                <div class="code-ref">📁 concordia/components/agent/concat_act_component.py:26-181</div>
+                <p><strong>标准实现：</strong>连接所有 ContextComponent 的输出，使用 InteractiveDocument + LLM 生成行动</p>
+                <ul>
+                    <li>支持 FREE, CHOICE, FLOAT 三种输出类型</li>
+                    <li>可配置组件顺序 (component_order)</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="component-box">
+            <div class="component-title">ContextProcessorComponent（上下文处理器）</div>
+            <div class="code-ref">📁 concordia/typing/entity_component.py:300-325</div>
+            <p><strong>作用：</strong>在 PRE_ACT 和 POST_ACT 阶段处理上下文</p>
+
+            <div class="hierarchy">
+                <h4>NoOpContextProcessor</h4>
+                <div class="code-ref">📁 concordia/components/agent/no_op_context_processor.py:20-22</div>
+                <p>什么都不做的默认实现</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>1.3 Game Master 专用组件</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>组件名称</th>
+                    <th>作用</th>
+                    <th>代码位置</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="class-name">MakeObservation</span></td>
+                    <td>为玩家生成观察，使用队列系统管理事件</td>
+                    <td>📁 concordia/components/game_master/make_observation.py:30-177</td>
+                </tr>
+                <tr>
+                    <td><span class="class-name">EventResolution</span></td>
+                    <td>将 putative events 转换为实际事件，使用 thought_chains</td>
+                    <td>📁 concordia/components/game_master/event_resolution.py:29-212</td>
+                </tr>
+                <tr>
+                    <td><span class="class-name">NextActing</span></td>
+                    <td>决定下一个行动的实体（多种变体：固定顺序、随机、基于场景等）</td>
+                    <td>📁 concordia/components/game_master/next_acting.py:27-457</td>
+                </tr>
+                <tr>
+                    <td><span class="class-name">Terminate</span></td>
+                    <td>决定是否终止模拟</td>
+                    <td>📁 concordia/components/game_master/terminate.py:25-105</td>
+                </tr>
+                <tr>
+                    <td><span class="class-name">NextGameMaster</span></td>
+                    <td>在多个 GM 规则集之间切换</td>
+                    <td>📁 concordia/components/game_master/next_game_master.py:34-133</td>
+                </tr>
+                <tr>
+                    <td><span class="class-name">WorldState</span></td>
+                    <td>追踪世界状态变量</td>
+                    <td>📁 concordia/components/game_master/world_state.py:26-159</td>
+                </tr>
+                <tr>
+                    <td><span class="class-name">Locations</span></td>
+                    <td>追踪实体的位置</td>
+                    <td>📁 concordia/components/game_master/world_state.py:161-325</td>
+                </tr>
+                <tr>
+                    <td><span class="class-name">GenerativeClock</span></td>
+                    <td>使用 LLM 更新的生成式时钟</td>
+                    <td>📁 concordia/components/game_master/world_state.py:327-484</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="diagram">
+        <h3>1.4 Engine 层次结构</h3>
+
+        <div class="component-box">
+            <div class="component-title">Engine（抽象基类）</div>
+            <div class="code-ref">📁 concordia/environment/engine.py:23-243</div>
+            <p><strong>核心方法：</strong></p>
+            <ul>
+                <li><span class="class-name">make_observation(game_master, entities)</span></li>
+                <li><span class="class-name">next_acting(game_master, entities) → (Entity, ActionSpec)</span></li>
+                <li><span class="class-name">resolve(game_master, putative_event)</span></li>
+                <li><span class="class-name">terminate(game_master) → bool</span></li>
+                <li><span class="class-name">next_game_master(game_master) → Entity</span></li>
+                <li><span class="class-name">run_loop(game_master, entities, max_steps)</span></li>
+            </ul>
+
+            <div class="hierarchy">
+                <div class="component-box">
+                    <div class="component-title">Sequential（顺序执行引擎）</div>
+                    <div class="code-ref">📁 concordia/environment/engines/sequential.py:43-271</div>
+                    <p><strong>特点：</strong>实现完整的游戏循环，按顺序执行每个步骤</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>1.5 Memory 系统层次结构</h3>
+
+        <div class="component-box">
+            <div class="component-title">AssociativeMemoryBank</div>
+            <div class="code-ref">📁 concordia/associative_memory/basic_associative_memory.py:50-548</div>
+            <p><strong>核心功能：</strong></p>
+            <ul>
+                <li><span class="class-name">add(text, metadata, importance=1.0)</span> - 添加记忆</li>
+                <li><span class="class-name">retrieve_associative(query, k, use_recency, add_time) → list[str]</span> - 基于余弦相似度的联想检索</li>
+                <li><span class="class-name">retrieve_recent(k, add_time) → list[str]</span> - 检索最近的记忆</li>
+                <li><span class="class-name">scan(predicate) → list[str]</span> - 扫描所有记忆</li>
+            </ul>
+            <p><strong>原理：</strong>使用向量嵌入（embeddings）存储记忆，通过余弦相似度计算相关性</p>
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>1.6 Document 系统层次结构</h3>
+
+        <div class="component-box">
+            <div class="component-title">Document</div>
+            <div class="code-ref">📁 concordia/document/document.py:20-234</div>
+            <p><strong>基础文档系统：</strong>管理带标签的内容块</p>
+
+            <div class="hierarchy">
+                <div class="component-box">
+                    <div class="component-title">InteractiveDocument(Document)</div>
+                    <div class="code-ref">📁 concordia/document/interactive_document.py:48-351</div>
+                    <p><strong>与 LLM 交互的文档系统：</strong></p>
+                    <ul>
+                        <li><span class="class-name">statement(text)</span> - 添加陈述</li>
+                        <li><span class="class-name">debug(text)</span> - 添加调试信息</li>
+                        <li><span class="class-name">open_question(question, max_tokens, terminators) → str</span> - 开放式问题</li>
+                        <li><span class="class-name">open_question_diversified(question, num_samples) → str</span> - 多样化采样</li>
+                        <li><span class="class-name">multiple_choice_question(question, answers) → int</span> - 多选题</li>
+                        <li><span class="class-name">yes_no_question(question) → bool</span> - 是/否问题</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2 id="phase-state-machine">2. Phase 状态机循环机制</h2>
+
+    <div class="diagram">
+        <h3>2.1 Phase 枚举定义</h3>
+        <div class="code-ref">📁 concordia/typing/entity_component.py:28-46</div>
+        <pre>class Phase(enum.Enum):
+    READY = 'ready'          # 初始状态，准备好接收新的 act 或 observe 调用
+    PRE_ACT = 'pre_act'      # 准备行动：收集上下文
+    POST_ACT = 'post_act'    # 行动后：处理行动结果
+    PRE_OBSERVE = 'pre_observe'    # 准备观察：接收观察
+    POST_OBSERVE = 'post_observe'  # 观察后：处理观察
+    UPDATE = 'update'        # 更新：提交所有缓存的更改</pre>
+    </div>
+
+    <div class="diagram">
+        <h3>2.2 act() 的 Phase 状态转换</h3>
+        <div class="code-ref">📁 concordia/agents/entity_agent.py:194-247</div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <span class="phase phase-ready">READY</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-preact">PRE_ACT</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-postact">POST_ACT</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-update">UPDATE</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-ready">READY</span>
+        </div>
+
+        <h4>详细步骤：</h4>
+        <div class="sequence-step">
+            <span class="sequence-number">1</span>
+            <strong>READY → PRE_ACT：</strong>进入准备行动阶段
+            <div class="code-ref">entity_agent.py:194-195</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">2</span>
+            <strong>PRE_ACT 阶段：</strong>并行调用所有 ContextComponent 的 <span class="class-name">pre_act(action_spec)</span>
+            <div class="code-ref">entity_agent.py:196-203</div>
+            <ul>
+                <li>收集所有上下文：<span class="class-name">contexts = {component_name: context_string}</span></li>
+                <li>各组件可能从 Memory 检索信息、生成计划、自我反思等</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">3</span>
+            <strong>调用 ContextProcessor：</strong><span class="class-name">context_processor.pre_act(contexts)</span>
+            <div class="code-ref">entity_agent.py:204-206</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">4</span>
+            <strong>生成行动：</strong><span class="class-name">act_component.get_action_attempt(contexts, action_spec)</span>
+            <div class="code-ref">entity_agent.py:207-212</div>
+            <ul>
+                <li>ActingComponent 聚合所有上下文</li>
+                <li>使用 InteractiveDocument + LLM 生成行动</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">5</span>
+            <strong>PRE_ACT → POST_ACT：</strong>进入行动后阶段
+            <div class="code-ref">entity_agent.py:214-215</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">6</span>
+            <strong>POST_ACT 阶段：</strong>并行调用所有组件的 <span class="class-name">post_act(action_attempt)</span>
+            <div class="code-ref">entity_agent.py:216-223</div>
+            <ul>
+                <li>各组件可以处理刚刚生成的行动</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">7</span>
+            <strong>调用 ContextProcessor：</strong><span class="class-name">context_processor.post_act(contexts)</span>
+            <div class="code-ref">entity_agent.py:224-226</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">8</span>
+            <strong>POST_ACT → UPDATE：</strong>进入更新阶段
+            <div class="code-ref">entity_agent.py:228-229</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">9</span>
+            <strong>UPDATE 阶段：</strong>并行调用所有组件的 <span class="class-name">update()</span>
+            <div class="code-ref">entity_agent.py:230-237</div>
+            <ul>
+                <li>Memory 组件提交缓存的记忆到 AssociativeMemoryBank</li>
+                <li>ActionSpecIgnored 组件清除缓存的 pre_act 值</li>
+                <li>各组件重置内部状态，准备下一次调用</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">10</span>
+            <strong>UPDATE → READY：</strong>回到就绪状态
+            <div class="code-ref">entity_agent.py:239-240</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">11</span>
+            <strong>返回行动：</strong>返回 <span class="class-name">action_attempt</span>
+            <div class="code-ref">entity_agent.py:242-247</div>
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>2.3 observe() 的 Phase 状态转换</h3>
+        <div class="code-ref">📁 concordia/agents/entity_agent.py:249-293</div>
+
+        <div style="text-align: center; margin: 30px 0;">
+            <span class="phase phase-ready">READY</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-preobs">PRE_OBSERVE</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-postobs">POST_OBSERVE</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-update">UPDATE</span>
+            <span class="arrow">→</span>
+            <span class="phase phase-ready">READY</span>
+        </div>
+
+        <h4>详细步骤：</h4>
+        <div class="sequence-step">
+            <span class="sequence-number">1</span>
+            <strong>READY → PRE_OBSERVE：</strong>进入准备观察阶段
+            <div class="code-ref">entity_agent.py:249-250</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">2</span>
+            <strong>PRE_OBSERVE 阶段：</strong>并行调用所有组件的 <span class="class-name">pre_observe(observation)</span>
+            <div class="code-ref">entity_agent.py:251-258</div>
+            <ul>
+                <li>ObservationToMemory 组件将观察添加到 Memory（带 [observation] 标签）</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">3</span>
+            <strong>调用 ContextProcessor：</strong><span class="class-name">context_processor.pre_observe()</span>
+            <div class="code-ref">entity_agent.py:259-261</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">4</span>
+            <strong>PRE_OBSERVE → POST_OBSERVE：</strong>进入观察后阶段
+            <div class="code-ref">entity_agent.py:263-264</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">5</span>
+            <strong>POST_OBSERVE 阶段：</strong>并行调用所有组件的 <span class="class-name">post_observe()</span>
+            <div class="code-ref">entity_agent.py:265-272</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">6</span>
+            <strong>调用 ContextProcessor：</strong><span class="class-name">context_processor.post_observe()</span>
+            <div class="code-ref">entity_agent.py:273-275</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">7</span>
+            <strong>POST_OBSERVE → UPDATE：</strong>进入更新阶段
+            <div class="code-ref">entity_agent.py:277-278</div>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">8</span>
+            <strong>UPDATE 阶段：</strong>并行调用所有组件的 <span class="class-name">update()</span>
+            <div class="code-ref">entity_agent.py:279-286</div>
+            <ul>
+                <li>Memory 组件提交缓存的观察记忆</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">9</span>
+            <strong>UPDATE → READY：</strong>回到就绪状态
+            <div class="code-ref">entity_agent.py:288-293</div>
+        </div>
+    </div>
+
+    <div class="note">
+        <strong>设计要点：</strong>Phase 状态机确保了组件调用的一致性和线程安全性。所有组件在特定 Phase 下执行特定操作，避免了状态混乱。ActionSpecIgnored 组件利用这一机制实现了安全的跨组件数据访问。
+    </div>
+
+    <h2 id="agent-behavior-sequence">3. Agent 行为调用时序</h2>
+
+    <div class="diagram">
+        <h3>3.1 游戏主循环时序（Engine.run_loop）</h3>
+        <div class="code-ref">📁 concordia/environment/engines/sequential.py:193-271</div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">0</span>
+            <strong>初始化：</strong>开始游戏循环
+            <div class="code-ref">sequential.py:193-201</div>
+            <pre>while not self.terminate(game_master, verbose) and steps < max_steps:</pre>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">1</span>
+            <strong>选择 Game Master：</strong><span class="class-name">Engine.next_game_master(game_master)</span>
+            <div class="code-ref">sequential.py:202-207</div>
+            <ul>
+                <li>如果有多个 GM 规则集，选择下一个要使用的 GM</li>
+                <li>GM 调用 <span class="class-name">act(ActionSpec(output_type=NEXT_GAME_MASTER))</span></li>
+                <li>NextGameMaster 组件使用 LLM 从选项中选择</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">2</span>
+            <strong>生成观察：</strong><span class="class-name">Engine.make_observation(game_master, entities)</span>
+            <div class="code-ref">sequential.py:208-222</div>
+            <p><strong>核心逻辑：</strong></p>
+            <ul>
+                <li>并行为所有实体生成观察（使用 concurrency.run_tasks）</li>
+                <li>每个实体的观察生成流程：
+                    <ol>
+                        <li>GM 调用 <span class="class-name">act(ActionSpec(output_type=MAKE_OBSERVATION, call_to_action="{name}观察什么？"))</span></li>
+                        <li>MakeObservation 组件从队列中取出事件，使用 LLM 生成观察文本</li>
+                        <li>调用 <span class="class-name">entity.observe(observation)</span></li>
+                        <li>实体触发 observe() 流程（见 2.3）</li>
+                    </ol>
+                </li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">3</span>
+            <strong>决定下一个行动者：</strong><span class="class-name">Engine.next_acting(game_master, entities)</span>
+            <div class="code-ref">sequential.py:223-237</div>
+            <p><strong>分为两步：</strong></p>
+            <ol>
+                <li><strong>选择实体：</strong>GM 调用 <span class="class-name">act(ActionSpec(output_type=NEXT_ACTING))</span>
+                    <ul>
+                        <li>NextActing 组件返回实体名称</li>
+                        <li>多种策略：固定顺序、随机、基于场景等</li>
+                    </ul>
+                </li>
+                <li><strong>确定 ActionSpec：</strong>GM 调用 <span class="class-name">act(ActionSpec(output_type=NEXT_ACTION_SPEC, call_to_action="{name}的行动规格是什么？"))</span>
+                    <ul>
+                        <li>返回格式：<span class="class-name">"prompt: What would {name} do?;;type: choice;;options: option1, option2, option3"</span></li>
+                        <li>或：<span class="class-name">"prompt: What would {name} say?;;type: free"</span></li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">4</span>
+            <strong>实体执行行动：</strong><span class="class-name">entity.act(action_spec)</span>
+            <div class="code-ref">sequential.py:238-249</div>
+            <p><strong>触发实体的 act() 流程（见 2.2）：</strong></p>
+            <ul>
+                <li>Phase 转换：READY → PRE_ACT → POST_ACT → UPDATE → READY</li>
+                <li>所有 ContextComponent 提供上下文</li>
+                <li>ActingComponent 使用 LLM 生成行动</li>
+                <li>返回 action_attempt 字符串</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">5</span>
+            <strong>解析事件：</strong><span class="class-name">Engine.resolve(game_master, putative_event=action)</span>
+            <div class="code-ref">sequential.py:250-263</div>
+            <p><strong>GM 解析事件流程：</strong></p>
+            <ul>
+                <li>GM 调用 <span class="class-name">act(ActionSpec(output_type=RESOLVE, call_to_action="解析事件: {putative_event}"))</span></li>
+                <li>EventResolution 组件使用 thought_chains 处理：
+                    <ol>
+                        <li><span class="class-name">attempt_to_result(attempt, state)</span> - 将尝试转换为结果</li>
+                        <li><span class="class-name">determine_success_and_why(attempt, result)</span> - 判断成功与否</li>
+                        <li><span class="class-name">result_to_effect_on_state(result, state)</span> - 转换为状态效果</li>
+                    </ol>
+                </li>
+                <li>返回解析后的实际事件文本</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">6</span>
+            <strong>事件入队：</strong>将解析后的事件添加到 MakeObservation 的队列
+            <div class="code-ref">sequential.py:264-267</div>
+            <ul>
+                <li>这些事件将在下一轮的 make_observation 中被转换为观察</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">7</span>
+            <strong>检查终止：</strong><span class="class-name">Engine.terminate(game_master)</span>
+            <div class="code-ref">sequential.py:268-271</div>
+            <ul>
+                <li>GM 调用 <span class="class-name">act(ActionSpec(output_type=TERMINATE))</span></li>
+                <li>Terminate 组件返回 "Yes" 或 "No"</li>
+            </ul>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">8</span>
+            <strong>循环继续：</strong>如果未终止且未达到最大步数，回到步骤 1
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>3.2 完整时序图（单个循环步）</h3>
+
+        <pre style="background: white; color: #2c3e50; border: 2px solid #3498db; padding: 20px;">
+┌─────────┐     ┌────────┐     ┌────────┐     ┌────────────┐     ┌─────┐
+│ Engine  │     │   GM   │     │ Entity │     │ Components │     │ LLM │
+└────┬────�     └───┬────┘     └───┬────┘     └─────┬──────┘     └──┬──┘
+     │              │              │                │               │
+     │ 1. next_game_master(GM)    │                │               │
+     ├─────────────>│              │                │               │
+     │              │ act(NEXT_GAME_MASTER)         │               │
+     │              ├─────────────>│                │               │
+     │              │              │ pre_act()      │               │
+     │              │              ├───────────────>│               │
+     │              │              │<───contexts────┤               │
+     │              │              │ get_action_attempt()           │
+     │              │              │────────────────┼──────────────>│
+     │              │<─gm_name─────┤<───response────┼───────────────┤
+     │<─gm_name─────┤              │                │               │
+     │              │              │                │               │
+     │ 2. make_observation(GM, [entities]) (并行)   │               │
+     ├─────────────>│              │                │               │
+     │              │ act(MAKE_OBSERVATION)         │               │
+     │              ├─────────────>│                │               │
+     │              │              │ pre_act()      │               │
+     │              │              ├───────────────>│               │
+     │              │              │<───contexts────┤               │
+     │              │              │ LLM生成观察    │               │
+     │              │              │────────────────┼──────────────>│
+     │              │<─observation─┤<───response────┼───────────────┤
+     │              │              │                │               │
+     │              │ 每个实体: entity.observe(obs)  │               │
+     │              ├─────────────>│                │               │
+     │              │              │ PRE_OBSERVE    │               │
+     │              │              ├───────────────>│               │
+     │              │              │ pre_observe()  │               │
+     │              │              │ (添加到Memory) │               │
+     │              │              │ UPDATE         │               │
+     │              │              │ (提交记忆)     │               │
+     │              │              │                │               │
+     │ 3. next_acting(GM, entities)                 │               │
+     ├─────────────>│              │                │               │
+     │              │ act(NEXT_ACTING)              │               │
+     │              ├─────────────>│                │               │
+     │              │<─entity_name─┤                │               │
+     │              │              │                │               │
+     │              │ act(NEXT_ACTION_SPEC)         │               │
+     │              ├─────────────>│                │               │
+     │              │<─action_spec─┤                │               │
+     │<─(entity, spec)              │                │               │
+     │              │              │                │               │
+     │ 4. entity.act(action_spec)  │                │               │
+     ├─────────────────────────────>│                │               │
+     │              │              │ PRE_ACT        │               │
+     │              │              ├───────────────>│               │
+     │              │              │ pre_act()      │               │
+     │              │              │ (Plan, Memory, │               │
+     │              │              │  SelfPerception等)             │
+     │              │              │<───contexts────┤               │
+     │              │              │                │               │
+     │              │              │ get_action_attempt()           │
+     │              │              │────────────────┼──────────────>│
+     │              │              │<───action──────┼───────────────┤
+     │              │              │                │               │
+     │              │              │ POST_ACT       │               │
+     │              │              ├───────────────>│               │
+     │              │              │ UPDATE         │               │
+     │              │              │ (提交记忆)     │               │
+     │<────────action───────────────┤                │               │
+     │              │              │                │               │
+     │ 5. resolve(GM, action)      │                │               │
+     ├─────────────>│              │                │               │
+     │              │ act(RESOLVE) │                │               │
+     │              ├─────────────>│                │               │
+     │              │              │ ThoughtChains  │               │
+     │              │              │ (attempt→result)               │
+     │              │              │────────────────┼──────────────>│
+     │              │<──event──────┤<───────────────┼───────────────┤
+     │<──event──────┤              │                │               │
+     │              │              │                │               │
+     │ 6. terminate(GM)            │                │               │
+     ├─────────────>│              │                │               │
+     │              │ act(TERMINATE)                │               │
+     │              ├─────────────>│                │               │
+     │              │<──"Yes/No"───┤                │               │
+     │<──bool───────┤              │                │               │
+     │              │              │                │               │
+     │ 7. 循环继续或结束            │                │               │
+     │              │              │                │               │</pre>
+    </div>
+
+    <h2 id="data-flow">4. 数据流概览</h2>
+
+    <div class="diagram">
+        <h3>4.1 核心数据流向</h3>
+
+        <div style="background: linear-gradient(to bottom, #ecf0f1, white); padding: 25px; border-radius: 8px;">
+            <h4>1. Engine → GM → Engine</h4>
+            <div style="margin: 20px 0;">
+                <div class="dataflow-box" style="background: #3498db; color: white;">Engine</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">ActionSpec<br/>(OutputType)</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #e74c3c; color: white;">GM</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">决策结果<br/>(观察/实体/事件)</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #3498db; color: white;">Engine</div>
+            </div>
+            <div class="code-ref">📁 concordia/environment/engines/sequential.py:193-271</div>
+
+            <h4>2. Engine → Entity → Engine</h4>
+            <div style="margin: 20px 0;">
+                <div class="dataflow-box" style="background: #3498db; color: white;">Engine</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">observation<br/>或 ActionSpec</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #9b59b6; color: white;">Entity</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">action_attempt</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #3498db; color: white;">Engine</div>
+            </div>
+
+            <h4>3. Entity → Components → Entity（act 流程）</h4>
+            <div style="margin: 20px 0;">
+                <div class="dataflow-box" style="background: #9b59b6; color: white;">Entity</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">ActionSpec</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #1abc9c; color: white;">ContextComponents</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">contexts 字典</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #f39c12; color: white;">ActingComponent</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #9b59b6; color: white;">Entity</div>
+            </div>
+            <div class="code-ref">📁 concordia/agents/entity_agent.py:194-247</div>
+
+            <h4>4. Components ↔ Memory</h4>
+            <div style="margin: 20px 0;">
+                <div class="dataflow-box" style="background: #1abc9c; color: white;">Components</div>
+                <span class="flow-arrow">⇄</span>
+                <div class="dataflow-box" style="background: #34495e; color: white;">Memory</div>
+                <span class="flow-arrow">⇄</span>
+                <div class="dataflow-box">AssociativeMemoryBank<br/>(向量嵌入)</div>
+            </div>
+            <ul>
+                <li><strong>写入：</strong>Memory.add(text, tags) → 缓存 → UPDATE 阶段提交</li>
+                <li><strong>读取：</strong>Memory.retrieve_recent() 或 retrieve_associative()</li>
+            </ul>
+            <div class="code-ref">📁 concordia/components/agent/memory.py:32-426</div>
+
+            <h4>5. Components ↔ LLM（通过 InteractiveDocument）</h4>
+            <div style="margin: 20px 0;">
+                <div class="dataflow-box" style="background: #1abc9c; color: white;">Component</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">InteractiveDocument</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">prompt 文本</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #e67e22; color: white;">LLM</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box">response</div>
+                <span class="flow-arrow">→</span>
+                <div class="dataflow-box" style="background: #1abc9c; color: white;">Component</div>
+            </div>
+            <div class="code-ref">📁 concordia/document/interactive_document.py:48-351</div>
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>4.2 数据类型详解</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>数据类型</th>
+                    <th>结构</th>
+                    <th>用途</th>
+                    <th>代码位置</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>ActionSpec</strong></td>
+                    <td>
+                        <pre style="margin: 5px 0; padding: 8px; background: #2c3e50; font-size: 0.85em;">
+{
+  call_to_action: str,
+  output_type: OutputType,
+  options: Sequence[str],
+  tag: str | None
+}</pre>
+                    </td>
+                    <td>指定实体或 GM 需要执行的行动类型</td>
+                    <td>📁 entity.py:73-141</td>
+                </tr>
+                <tr>
+                    <td><strong>OutputType</strong></td>
+                    <td>
+                        <pre style="margin: 5px 0; padding: 8px; background: #2c3e50; font-size: 0.85em;">
+FREE, CHOICE, FLOAT,
+MAKE_OBSERVATION,
+NEXT_ACTING,
+NEXT_ACTION_SPEC,
+RESOLVE, TERMINATE,
+NEXT_GAME_MASTER</pre>
+                    </td>
+                    <td>ActionSpec 的输出类型枚举</td>
+                    <td>📁 entity.py:25-41</td>
+                </tr>
+                <tr>
+                    <td><strong>ComponentContextMapping</strong></td>
+                    <td>
+                        <pre style="margin: 5px 0; padding: 8px; background: #2c3e50; font-size: 0.85em;">
+Mapping[str, str]
+# {component_name: context}</pre>
+                    </td>
+                    <td>所有 ContextComponent 的输出聚合</td>
+                    <td>📁 entity_component.py:189</td>
+                </tr>
+                <tr>
+                    <td><strong>Memory Item</strong></td>
+                    <td>
+                        <pre style="margin: 5px 0; padding: 8px; background: #2c3e50; font-size: 0.85em;">
+{
+  text: str,
+  embedding: np.ndarray,
+  timestamp: datetime,
+  importance: float,
+  metadata: dict
+}</pre>
+                    </td>
+                    <td>AssociativeMemoryBank 中的记忆条目</td>
+                    <td>📁 basic_associative_memory.py:50-548</td>
+                </tr>
+                <tr>
+                    <td><strong>Observation</strong></td>
+                    <td>
+                        <pre style="margin: 5px 0; padding: 8px; background: #2c3e50; font-size: 0.85em;">
+str
+# 带 [observation] 标签</pre>
+                    </td>
+                    <td>实体接收的观察文本</td>
+                    <td>📁 observation.py:26</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="diagram">
+        <h3>4.3 上下文聚合机制</h3>
+        <div class="code-ref">📁 concordia/components/agent/concat_act_component.py:84-97</div>
+
+        <p><strong>ConcatActComponent 如何聚合上下文：</strong></p>
+
+        <pre style="background: #2c3e50; color: #ecf0f1; padding: 15px;">
+def _context_for_action(self, contexts: ComponentContextMapping) -> str:
+    if self._component_order is None:
+        # 按组件字典顺序连接
+        return '\n'.join(context for context in contexts.values() if context)
+    else:
+        # 按指定顺序连接
+        order = self._component_order + tuple(sorted(
+            set(contexts.keys()) - set(self._component_order)))
+        return '\n'.join(contexts[name] for name in order if contexts[name])</pre>
+
+        <p><strong>上下文示例（拼接后的 prompt）：</strong></p>
+        <pre style="background: white; color: #2c3e50; border: 2px solid #95a5a6; padding: 15px;">
+Role playing instructions:
+The instructions for how to play the role of Alice are as follows...
+
+Plan:
+Alice's step-by-step plan is to first greet Bob, then discuss the weather...
+
+Self Perception:
+Alice is a friendly and outgoing person who enjoys social interactions...
+
+Observations (ordered from oldest to latest):
+[observation] Alice sees Bob walking towards her.
+[observation] The weather is sunny and warm.
+
+---
+
+Exercise: What would Alice do next?</pre>
+    </div>
+
+    <h2 id="component-details">5. 组件系统详解</h2>
+
+    <div class="diagram">
+        <h3>5.1 ContextComponent 工作原理</h3>
+
+        <p><strong>ContextComponent 的生命周期：</strong></p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Phase</th>
+                    <th>调用方法</th>
+                    <th>作用</th>
+                    <th>返回值</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td class="phase-preact">PRE_ACT</td>
+                    <td><span class="class-name">pre_act(action_spec)</span></td>
+                    <td>生成上下文信息</td>
+                    <td>context string</td>
+                </tr>
+                <tr>
+                    <td class="phase-postact">POST_ACT</td>
+                    <td><span class="class-name">post_act(action_attempt)</span></td>
+                    <td>处理行动结果</td>
+                    <td>empty string</td>
+                </tr>
+                <tr>
+                    <td class="phase-preobs">PRE_OBSERVE</td>
+                    <td><span class="class-name">pre_observe(observation)</span></td>
+                    <td>接收观察</td>
+                    <td>empty string</td>
+                </tr>
+                <tr>
+                    <td class="phase-postobs">POST_OBSERVE</td>
+                    <td><span class="class-name">post_observe()</span></td>
+                    <td>处理观察</td>
+                    <td>empty string</td>
+                </tr>
+                <tr>
+                    <td class="phase-update">UPDATE</td>
+                    <td><span class="class-name">update()</span></td>
+                    <td>提交更改，重置状态</td>
+                    <td>None</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="diagram">
+        <h3>5.2 ActionSpecIgnored 缓存机制</h3>
+        <div class="code-ref">📁 concordia/components/agent/action_spec_ignored.py:26-101</div>
+
+        <p><strong>设计目的：</strong>允许其他组件在 PRE_ACT 阶段安全地访问该组件的 pre_act 值</p>
+
+        <pre style="background: #2c3e50; color: #ecf0f1; padding: 15px;">
+# 第一次调用时计算并缓存
+def get_pre_act_value(self) -> str:
+    if self.get_entity().get_phase() != Phase.PRE_ACT:
+        raise ValueError("只能在 PRE_ACT 阶段访问")
+
+    with self._lock:
+        if self._pre_act_value is None:
+            self._pre_act_value = self._make_pre_act_value()  # 调用子类实现
+        return self._pre_act_value
+
+# UPDATE 阶段清除缓存
+def update(self) -> None:
+    with self._lock:
+        self._pre_act_value = None</pre>
+
+        <p><strong>跨组件访问示例：</strong></p>
+        <pre style="background: white; color: #2c3e50; border: 2px solid #95a5a6; padding: 15px;">
+# Plan 组件在 PRE_ACT 阶段访问其他组件
+component_states = '\n'.join([
+    self._component_pre_act_display(key) for key in self._components
+])
+
+# 安全访问，因为都在 PRE_ACT 阶段
+def _component_pre_act_display(self, key: str) -> str:
+    return (
+        f'{self.get_component_pre_act_label(key)}:\n'
+        f'{self.get_named_component_pre_act_value(key)}'  # 调用其他组件的 get_pre_act_value()
+    )</pre>
+    </div>
+
+    <div class="diagram">
+        <h3>5.3 Memory 提交机制</h3>
+        <div class="code-ref">📁 concordia/components/agent/memory.py:32-426</div>
+
+        <p><strong>两阶段提交模式：</strong></p>
+
+        <div class="sequence-step">
+            <span class="sequence-number">1</span>
+            <strong>缓存阶段：</strong>在 PRE_OBSERVE 或其他阶段调用 <span class="class-name">Memory.add(text, tags)</span>
+            <pre style="background: #2c3e50; color: #ecf0f1; padding: 10px; margin: 10px 0;">
+def add(self, text: str, tags: Collection[str] = ()) -> None:
+    # 添加到缓存列表
+    self._buffer.append({
+        'text': text,
+        'tags': tags,
+        'timestamp': self._clock_now()
+    })</pre>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">2</span>
+            <strong>提交阶段：</strong>在 UPDATE 阶段调用 <span class="class-name">Memory.update()</span>
+            <pre style="background: #2c3e50; color: #ecf0f1; padding: 10px; margin: 10px 0;">
+def update(self) -> None:
+    # 批量提交所有缓存的记忆到 AssociativeMemoryBank
+    for item in self._buffer:
+        self._memory.add(
+            text=item['text'],
+            metadata={'tags': item['tags']},
+            timestamp=item['timestamp']
+        )
+    self._buffer.clear()  # 清空缓存</pre>
+        </div>
+
+        <div class="note">
+            <strong>为什么需要缓存？</strong>避免在 Phase 转换过程中立即修改共享状态，确保所有组件在同一 Phase 下看到一致的数据。
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>5.4 GM 组件的特殊性</h3>
+
+        <p><strong>GM 组件响应不同的 OutputType：</strong></p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>组件名称</th>
+                    <th>响应的 OutputType</th>
+                    <th>返回内容</th>
+                    <th>代码位置</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>MakeObservation</td>
+                    <td>MAKE_OBSERVATION</td>
+                    <td>观察文本（从事件队列生成）</td>
+                    <td>📁 make_observation.py:79-138</td>
+                </tr>
+                <tr>
+                    <td>NextActing 系列</td>
+                    <td>NEXT_ACTING</td>
+                    <td>实体名称</td>
+                    <td>📁 next_acting.py:72-457</td>
+                </tr>
+                <tr>
+                    <td>NextActing 系列</td>
+                    <td>NEXT_ACTION_SPEC</td>
+                    <td>ActionSpec 字符串<br/>格式: "prompt: ...;;type: ...;;options: ..."</td>
+                    <td>📁 next_acting.py:72-457</td>
+                </tr>
+                <tr>
+                    <td>EventResolution</td>
+                    <td>RESOLVE</td>
+                    <td>解析后的事件文本</td>
+                    <td>📁 event_resolution.py:83-183</td>
+                </tr>
+                <tr>
+                    <td>Terminate</td>
+                    <td>TERMINATE</td>
+                    <td>"Yes" 或 "No"</td>
+                    <td>📁 terminate.py:45-54</td>
+                </tr>
+                <tr>
+                    <td>NextGameMaster</td>
+                    <td>NEXT_GAME_MASTER</td>
+                    <td>GM 名称</td>
+                    <td>📁 next_game_master.py:96-121</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <p><strong>GM 组件判断 OutputType 的模式：</strong></p>
+        <pre style="background: #2c3e50; color: #ecf0f1; padding: 15px;">
+def pre_act(self, action_spec: ActionSpec) -> str:
+    if action_spec.output_type == OutputType.MAKE_OBSERVATION:
+        # 生成观察
+        return self._generate_observation()
+    return ''  # 不响应其他类型</pre>
+    </div>
+
+    <div class="diagram">
+        <h3>5.5 ThoughtChains 事件解析流程</h3>
+        <div class="code-ref">📁 concordia/thought_chains/thought_chains.py (完整文件)</div>
+
+        <p><strong>EventResolution 使用 ThoughtChains 的步骤：</strong></p>
+
+        <div class="sequence-step">
+            <span class="sequence-number">1</span>
+            <strong>attempt_to_result：</strong>将尝试转换为结果
+            <pre style="background: #2c3e50; color: #ecf0f1; padding: 10px; margin: 10px 0;">
+prompt.statement(f"Attempt: {attempt}")
+prompt.statement(f"Current state: {state}")
+result = prompt.open_question(
+    "What would be the result of this attempt?",
+    max_tokens=500
+)</pre>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">2</span>
+            <strong>determine_success_and_why：</strong>判断成功与否及原因
+            <pre style="background: #2c3e50; color: #ecf0f1; padding: 10px; margin: 10px 0;">
+success = prompt.yes_no_question(
+    f"Was the attempt '{attempt}' successful in achieving '{result}'?"
+)
+why = prompt.open_question(
+    "Why or why not?",
+    max_tokens=300
+)</pre>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">3</span>
+            <strong>result_to_effect_on_state：</strong>转换为状态效果
+            <pre style="background: #2c3e50; color: #ecf0f1; padding: 10px; margin: 10px 0;">
+effect = prompt.open_question(
+    "How does this result change the state of the world?",
+    max_tokens=500
+)</pre>
+        </div>
+
+        <div class="sequence-step">
+            <span class="sequence-number">4</span>
+            <strong>组合最终事件：</strong>
+            <pre style="background: #2c3e50; color: #ecf0f1; padding: 10px; margin: 10px 0;">
+final_event = f"{result}. {why}. {effect}"</pre>
+        </div>
+    </div>
+
+    <h2>6. 总结与关键设计模式</h2>
+
+    <div class="diagram">
+        <h3>6.1 核心设计模式</h3>
+
+        <div class="component-box">
+            <div class="component-title">1. Entity-Component 架构（组合优于继承）</div>
+            <ul>
+                <li>Entity 不直接实现复杂逻辑，而是委托给 Components</li>
+                <li>Components 可以灵活组合，创建不同行为的 Entity</li>
+                <li>新功能通过添加新 Component 实现，无需修改 Entity</li>
+            </ul>
+            <div class="code-ref">📁 concordia/agents/entity_agent.py:40-399</div>
+        </div>
+
+        <div class="component-box">
+            <div class="component-title">2. Phase 状态机模式</div>
+            <ul>
+                <li>确保组件在正确的阶段执行正确的操作</li>
+                <li>提供线程安全的跨组件数据访问</li>
+                <li>清晰的状态转换流程，易于理解和调试</li>
+            </ul>
+            <div class="code-ref">📁 concordia/typing/entity_component.py:28-46</div>
+        </div>
+
+        <div class="component-box">
+            <div class="component-title">3. 策略模式（ActingComponent）</div>
+            <ul>
+                <li>ActingComponent 接口统一，实现可替换</li>
+                <li>ConcatActComponent 是标准实现，可以创建其他策略</li>
+                <li>不同 Entity 可以使用不同的 ActingComponent</li>
+            </ul>
+            <div class="code-ref">📁 concordia/components/agent/concat_act_component.py:26-181</div>
+        </div>
+
+        <div class="component-box">
+            <div class="component-title">4. 观察者模式（Memory 系统）</div>
+            <ul>
+                <li>Components 通过 Memory 间接通信</li>
+                <li>观察和行动记录到 Memory，其他组件可以检索</li>
+                <li>解耦组件之间的直接依赖</li>
+            </ul>
+            <div class="code-ref">📁 concordia/components/agent/memory.py:32-426</div>
+        </div>
+
+        <div class="component-box">
+            <div class="component-title">5. 模板方法模式（ActionSpecIgnored）</div>
+            <ul>
+                <li>基类定义算法骨架（缓存、Phase 检查）</li>
+                <li>子类实现特定步骤（_make_pre_act_value）</li>
+                <li>减少重复代码，统一组件行为</li>
+            </ul>
+            <div class="code-ref">📁 concordia/components/agent/action_spec_ignored.py:26-101</div>
+        </div>
+
+        <div class="component-box">
+            <div class="component-title">6. 责任链模式（ThoughtChains）</div>
+            <ul>
+                <li>事件解析分为多个步骤，每步专注一个任务</li>
+                <li>步骤可以组合和重用</li>
+                <li>便于扩展新的解析逻辑</li>
+            </ul>
+            <div class="code-ref">📁 concordia/thought_chains/thought_chains.py</div>
+        </div>
+    </div>
+
+    <div class="diagram">
+        <h3>6.2 架构优势</h3>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>优势</th>
+                    <th>实现方式</th>
+                    <th>效果</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>可扩展性</strong></td>
+                    <td>Component 系统</td>
+                    <td>添加新 Component 无需修改现有代码</td>
+                </tr>
+                <tr>
+                    <td><strong>可复用性</strong></td>
+                    <td>组件可在不同 Entity 间共享</td>
+                    <td>减少重复代码，提高开发效率</td>
+                </tr>
+                <tr>
+                    <td><strong>可测试性</strong></td>
+                    <td>组件独立，职责单一</td>
+                    <td>易于单元测试和集成测试</td>
+                </tr>
+                <tr>
+                    <td><strong>并发安全</strong></td>
+                    <td>Phase 状态机 + 锁机制</td>
+                    <td>支持并行执行，避免竞态条件</td>
+                </tr>
+                <tr>
+                    <td><strong>灵活性</strong></td>
+                    <td>LLM 驱动的决策</td>
+                    <td>智能体行为可动态调整</td>
+                </tr>
+                <tr>
+                    <td><strong>可观察性</strong></td>
+                    <td>ComponentWithLogging</td>
+                    <td>完整的调试和分析能力</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="note" style="background: #e8f4f8; border-color: #3498db;">
+        <strong>🎯 Concordia 的核心理念：</strong>
+        <p>通过 <strong>Entity-Component 架构</strong> + <strong>Phase 状态机</strong> + <strong>LLM 驱动</strong>，创建一个灵活、可扩展、易于理解的社会模拟框架。每个组件都是一个独立的"认知模块"，它们协同工作，形成智能体的完整认知和行为能力。</p>
+    </div>
+
+    <hr style="margin: 40px 0; border: 2px solid #3498db;">
+
+    <div style="text-align: center; color: #7f8c8d; margin-top: 40px;">
+        <p><strong>文档生成时间：</strong>2025-11-10</p>
+        <p><strong>基于源码版本：</strong>Concordia Framework (concordia 文件夹完整源码)</p>
+        <p><strong>文档作者：</strong>Claude Code (基于源码分析自动生成)</p>
+    </div>
+
+</body>
+</html>
