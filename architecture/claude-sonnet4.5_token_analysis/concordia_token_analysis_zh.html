@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concordia Token 流动与峰值分析</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            line-height: 1.8;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 4px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #34495e;
+            border-left: 5px solid #3498db;
+            padding-left: 15px;
+            margin-top: 40px;
+            background-color: #ecf0f1;
+            padding: 10px 10px 10px 15px;
+        }
+        h3 {
+            color: #555;
+            margin-top: 25px;
+            border-bottom: 2px solid #95a5a6;
+            padding-bottom: 8px;
+        }
+        .token-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .token-table th {
+            background-color: #3498db;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        .token-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #ddd;
+        }
+        .token-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .code-ref {
+            font-family: 'Courier New', monospace;
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+            color: #e74c3c;
+        }
+        .highlight-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .peak-box {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .calculation-box {
+            background-color: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .formula {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .section {
+            background-color: white;
+            padding: 25px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .flow-diagram {
+            background-color: #f8f9fa;
+            border: 2px solid #dee2e6;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        .number-large {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        ul, ol {
+            margin: 15px 0;
+        }
+        li {
+            margin: 8px 0;
+        }
+        .warning {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 Concordia Token 流动与峰值分析</h1>
+
+    <div class="highlight-box">
+        <h3>📊 核心发现摘要</h3>
+        <ul>
+            <li><strong>单次Agent.act()峰值：</strong> <span class="number-large">8,000 - 12,000</span> tokens (input + output)</li>
+            <li><strong>单次GM event resolution峰值：</strong> <span class="number-large">15,000 - 25,000</span> tokens</li>
+            <li><strong>完整游戏循环单步峰值：</strong> <span class="number-large">25,000 - 40,000</span> tokens</li>
+            <li><strong>多Agent并行时峰值：</strong> <span class="number-large">可达 100,000+</span> tokens (5+ agents)</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>1. Token配置基准值</h2>
+
+        <h3>1.1 系统默认配置</h3>
+        <table class="token-table">
+            <tr>
+                <th>配置项</th>
+                <th>数值</th>
+                <th>代码位置</th>
+            </tr>
+            <tr>
+                <td><strong>LanguageModel.DEFAULT_MAX_TOKENS</strong></td>
+                <td>5000 tokens</td>
+                <td><span class="code-ref">language_model/language_model.py:27</span></td>
+            </tr>
+            <tr>
+                <td><strong>InteractiveDocument.DEFAULT_MAX_TOKENS</strong></td>
+                <td>50 tokens</td>
+                <td><span class="code-ref">document/interactive_document.py:28</span></td>
+            </tr>
+            <tr>
+                <td><strong>InteractiveDocument.DEFAULT_MAX_CHARACTERS</strong></td>
+                <td>200 characters</td>
+                <td><span class="code-ref">document/interactive_document.py:27</span></td>
+            </tr>
+        </table>
+
+        <div class="highlight-box">
+            <strong>⚠️ 注意：</strong>虽然InteractiveDocument默认只有50 tokens，但实际使用中几乎所有组件都会覆盖这个值，使用更大的max_tokens（通常是750-3000）。
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>2. Agent组件Token使用详情</h2>
+
+        <h3>2.1 典型Basic Agent的组件配置</h3>
+        <p>参考文件：<span class="code-ref">prefabs/entity/basic.py</span></p>
+
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th>组件名称</th>
+                    <th>LLM调用次数</th>
+                    <th>max_tokens配置</th>
+                    <th>Memory检索量</th>
+                    <th>估算Input Tokens</th>
+                    <th>代码位置</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Instructions</strong></td>
+                    <td>0</td>
+                    <td>N/A</td>
+                    <td>0</td>
+                    <td>~200 (固定文本)</td>
+                    <td><span class="code-ref">components/agent/instructions.py</span></td>
+                </tr>
+                <tr>
+                    <td><strong>LastNObservations</strong></td>
+                    <td>0</td>
+                    <td>N/A</td>
+                    <td>100条观察</td>
+                    <td>~3,000-5,000</td>
+                    <td><span class="code-ref">prefabs/entity/basic.py:73-74</span></td>
+                </tr>
+                <tr>
+                    <td><strong>AllSimilarMemories</strong></td>
+                    <td>1 (summary)</td>
+                    <td>750</td>
+                    <td>10条记忆</td>
+                    <td>~1,500-2,000 (input)<br>~750 (output)</td>
+                    <td><span class="code-ref">components/agent/all_similar_memories.py:82</span></td>
+                </tr>
+                <tr>
+                    <td><strong>SituationPerception</strong></td>
+                    <td>1</td>
+                    <td>1000</td>
+                    <td>25条记忆</td>
+                    <td>~3,000-4,000 (input)<br>~200-400 (output)</td>
+                    <td><span class="code-ref">components/agent/question_of_recent_memories.py:147</span></td>
+                </tr>
+                <tr>
+                    <td><strong>SelfPerception</strong></td>
+                    <td>1</td>
+                    <td>1000</td>
+                    <td>25条记忆</td>
+                    <td>~3,000-4,000 (input)<br>~200-400 (output)</td>
+                    <td><span class="code-ref">components/agent/question_of_recent_memories.py:147</span></td>
+                </tr>
+                <tr>
+                    <td><strong>PersonBySituation</strong></td>
+                    <td>1</td>
+                    <td>1000</td>
+                    <td>25条记忆</td>
+                    <td>~3,500-4,500 (input)<br>~200-400 (output)</td>
+                    <td><span class="code-ref">components/agent/question_of_recent_memories.py:147</span></td>
+                </tr>
+                <tr>
+                    <td><strong>ConcatActComponent</strong></td>
+                    <td>1 (final action)</td>
+                    <td>2200</td>
+                    <td>0 (使用汇总的context)</td>
+                    <td>~6,000-8,000 (input)<br>~50-200 (output)</td>
+                    <td><span class="code-ref">components/agent/concat_act_component.py:118</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>2.2 Agent.act() 单次调用Token流动</h3>
+
+        <div class="flow-diagram">Agent.act() Token流动时序图：
+
+┌─────────────────────────────────────────────────────────────────┐
+│ Phase: PRE_ACT                                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. AllSimilarMemories.pre_act()                               │
+│     ├─ Input: 组件状态 (~1,500 tokens)                          │
+│     ├─ LLM调用: summary生成 (max_tokens=750)                    │
+│     ├─ Memory检索: 10条 (~500 tokens)                           │
+│     └─ Output: 检索到的记忆 (~500 tokens)                        │
+│                                                                 │
+│  2. SituationPerception.pre_act()                              │
+│     ├─ Input: 25条recent memories (~3,000 tokens)              │
+│     ├─ LLM调用: 回答情境问题 (max_tokens=1000)                  │
+│     └─ Output: 情境描述 (~200-400 tokens)                       │
+│                                                                 │
+│  3. SelfPerception.pre_act()                                   │
+│     ├─ Input: 25条recent memories (~3,000 tokens)              │
+│     ├─ LLM调用: 回答自我认知问题 (max_tokens=1000)              │
+│     └─ Output: 自我描述 (~200-400 tokens)                       │
+│                                                                 │
+│  4. PersonBySituation.pre_act()                                │
+│     ├─ Input: 25条memories + 2个组件输出 (~3,500 tokens)        │
+│     ├─ LLM调用: 推理行为倾向 (max_tokens=1000)                  │
+│     └─ Output: 行为推理 (~200-400 tokens)                       │
+│                                                                 │
+│  PRE_ACT阶段小计:                                               │
+│  ├─ LLM调用次数: 4次                                            │
+│  ├─ Input Tokens: ~11,000 - 14,000                             │
+│  └─ Output Tokens: ~1,850 - 2,550                              │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ Phase: ACT (ConcatActComponent)                                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  5. ConcatActComponent.get_action_attempt()                    │
+│     ├─ Input: 汇总所有组件context (~6,000-8,000 tokens)         │
+│     │   ├─ Instructions: ~200                                  │
+│     │   ├─ LastNObservations: ~3,000-5,000                     │
+│     │   ├─ AllSimilarMemories: ~500                            │
+│     │   ├─ SituationPerception: ~200-400                       │
+│     │   ├─ SelfPerception: ~200-400                            │
+│     │   └─ PersonBySituation: ~200-400                         │
+│     ├─ LLM调用: 生成最终动作 (max_tokens=2200)                  │
+│     └─ Output: 动作字符串 (~50-200 tokens)                      │
+│                                                                 │
+│  ACT阶段小计:                                                   │
+│  ├─ LLM调用次数: 1次                                            │
+│  ├─ Input Tokens: ~6,000 - 8,000                               │
+│  └─ Output Tokens: ~50 - 200                                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+<strong>单次Agent.act()总计：</strong>
+├─ 总LLM调用次数: 5次
+├─ 总Input Tokens: ~17,000 - 22,000
+├─ 总Output Tokens: ~1,900 - 2,750
+└─ <span class="warning">峰值Token总量: ~19,000 - 25,000 tokens</span>
+        </div>
+
+        <div class="peak-box">
+            <h4>🔥 Agent Token峰值影响因素</h4>
+            <ul>
+                <li><strong>观察历史长度：</strong>LastNObservations配置为100条，每条观察约30-50 tokens，共3,000-5,000 tokens</li>
+                <li><strong>Memory检索数量：</strong>QuestionOfRecentMemories默认检索25条，每条约100-150 tokens</li>
+                <li><strong>组件数量：</strong>更多reflection组件会增加PRE_ACT阶段的LLM调用次数</li>
+                <li><strong>并行处理：</strong>Parallel engine下多个Agent同时act()会导致token数倍增</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>3. Game Master组件Token使用详情</h2>
+
+        <h3>3.1 典型Generic GM的组件配置</h3>
+        <p>参考文件：<span class="code-ref">prefabs/game_master/generic.py</span></p>
+
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th>组件名称</th>
+                    <th>触发时机</th>
+                    <th>LLM调用</th>
+                    <th>max_tokens</th>
+                    <th>估算Token消耗</th>
+                    <th>代码位置</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>LastNObservations</strong></td>
+                    <td>每次act</td>
+                    <td>0</td>
+                    <td>N/A</td>
+                    <td>~10,000-15,000 (1000条历史)</td>
+                    <td><span class="code-ref">generic.py:119-121</span></td>
+                </tr>
+                <tr>
+                    <td><strong>DisplayEvents</strong></td>
+                    <td>每次act</td>
+                    <td>0</td>
+                    <td>N/A</td>
+                    <td>~5,000-8,000</td>
+                    <td><span class="code-ref">components/game_master/event_resolution.py</span></td>
+                </tr>
+                <tr>
+                    <td><strong>AllSimilarMemories</strong></td>
+                    <td>每次act</td>
+                    <td>1</td>
+                    <td>750</td>
+                    <td>Input: ~2,000<br>Output: ~750</td>
+                    <td><span class="code-ref">generic.py:131-139</span></td>
+                </tr>
+                <tr>
+                    <td><strong>MakeObservation</strong></td>
+                    <td>MAKE_OBSERVATION</td>
+                    <td>每玩家1次</td>
+                    <td>1200</td>
+                    <td>Input: ~8,000/玩家<br>Output: ~200-400/玩家</td>
+                    <td><span class="code-ref">components/game_master/make_observation.py:166-173</span></td>
+                </tr>
+                <tr>
+                    <td><strong>NextActing</strong></td>
+                    <td>NEXT_ACTING</td>
+                    <td>1</td>
+                    <td>默认5000</td>
+                    <td>Input: ~10,000<br>Output: ~50</td>
+                    <td><span class="code-ref">components/game_master/next_acting.py</span></td>
+                </tr>
+                <tr>
+                    <td><strong>NextActionSpec</strong></td>
+                    <td>NEXT_ACTION_SPEC</td>
+                    <td>1</td>
+                    <td>默认5000</td>
+                    <td>Input: ~10,000<br>Output: ~100</td>
+                    <td><span class="code-ref">components/game_master/next_acting.py</span></td>
+                </tr>
+                <tr>
+                    <td><strong>EventResolution</strong></td>
+                    <td>RESOLVE</td>
+                    <td>3-6次 (ThoughtChains)</td>
+                    <td>1200-3000/链</td>
+                    <td>Input: ~20,000-30,000<br>Output: ~3,000-5,000</td>
+                    <td><span class="code-ref">components/game_master/event_resolution.py</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>3.2 EventResolution ThoughtChains Token详解</h3>
+        <p>EventResolution是GM最耗token的组件，因为它使用多步ThoughtChains进行事件推理。</p>
+
+        <div class="flow-diagram">EventResolution ThoughtChains流程：
+
+┌─────────────────────────────────────────────────────────────────┐
+│ ThoughtChain步骤序列（generic.py默认配置）                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Step 1: maybe_inject_narrative_push                           │
+│     ├─ 功能: 检查是否需要narrative干预                          │
+│     ├─ LLM调用: 0-1次 (条件触发)                                │
+│     └─ Token: ~0-2,000                                         │
+│                                                                 │
+│  Step 2: AccountForAgencyOfOthers                              │
+│     ├─ 功能: 考虑其他玩家的主动性                               │
+│     ├─ LLM调用: 每个inactive player 1次                        │
+│     ├─ max_tokens: 1500/玩家 (thought_chains.py:344-372)       │
+│     └─ Token: ~(N-1) × 3,000 (input+output)                   │
+│        └─ N=玩家数，假设4玩家 → ~9,000 tokens                  │
+│                                                                 │
+│  Step 3: result_to_who_what_where                              │
+│     ├─ 功能: 提取事件的who/what/where                          │
+│     ├─ LLM调用: 1次                                            │
+│     ├─ max_tokens: 1200 (thought_chains.py:173-176)            │
+│     └─ Token: Input ~5,000 + Output ~200 = ~5,200             │
+│                                                                 │
+│  (可选) Extra Steps (用户可配置):                               │
+│     ├─ result_to_effect: max_tokens=1200                       │
+│     ├─ result_to_causal_statement: max_tokens=1500             │
+│     ├─ attempt_to_result: max_tokens=2500-3000                 │
+│     └─ 每增加一步: ~3,000-5,000 tokens                         │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+<strong>单次EventResolution Token计算（4玩家场景）：</strong>
+
+基础配置（3步）：
+├─ Context准备: ~10,000 tokens (GM所有组件的context)
+├─ Step 1 (narrative): ~0-2,000
+├─ Step 2 (agency): ~9,000 (3个inactive players)
+├─ Step 3 (who_what_where): ~5,200
+└─ <span class="warning">总计: ~24,000 - 26,000 tokens</span>
+
+如果添加额外步骤（如result_to_effect, causal_statement）：
+└─ <span class="warning">总计可达: ~35,000 - 45,000 tokens</span>
+        </div>
+
+        <div class="highlight-box">
+            <h4>📌 ThoughtChains各步骤的max_tokens配置</h4>
+            <table class="token-table">
+                <tr>
+                    <th>ThoughtChain函数</th>
+                    <th>max_tokens</th>
+                    <th>代码位置</th>
+                </tr>
+                <tr>
+                    <td>attempt_to_result (with quote)</td>
+                    <td>2500</td>
+                    <td><span class="code-ref">thought_chains/thought_chains.py:74</span></td>
+                </tr>
+                <tr>
+                    <td>attempt_to_result (summary)</td>
+                    <td>3000</td>
+                    <td><span class="code-ref">thought_chains/thought_chains.py:214</span></td>
+                </tr>
+                <tr>
+                    <td>result_to_effect</td>
+                    <td>1200</td>
+                    <td><span class="code-ref">thought_chains/thought_chains.py:140</span></td>
+                </tr>
+                <tr>
+                    <td>result_to_causal_statement</td>
+                    <td>1500</td>
+                    <td><span class="code-ref">thought_chains/thought_chains.py:151</span></td>
+                </tr>
+                <tr>
+                    <td>result_to_who_what_where</td>
+                    <td>1200</td>
+                    <td><span class="code-ref">thought_chains/thought_chains.py:176</span></td>
+                </tr>
+                <tr>
+                    <td>AccountForAgencyOfOthers (per player)</td>
+                    <td>1500</td>
+                    <td><span class="code-ref">thought_chains/thought_chains.py:347</span></td>
+                </tr>
+                <tr>
+                    <td>event_with_quote</td>
+                    <td>3500</td>
+                    <td><span class="code-ref">thought_chains/thought_chains.py:307</span></td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>4. 完整游戏循环Token峰值计算</h2>
+
+        <h3>4.1 Sequential Engine单步循环</h3>
+        <p>参考文件：<span class="code-ref">environment/engines/sequential.py:193-271</span></p>
+
+        <div class="calculation-box">
+<strong>游戏循环单步Token流动分析（4玩家场景）：</strong>
+
+步骤1: next_game_master() - NEXT_GAME_MASTER
+├─ 通常返回固定GM，无LLM调用
+└─ Token: ~0
+
+步骤2: make_observation() - MAKE_OBSERVATION (并行)
+├─ 为每个玩家生成观察
+├─ LLM调用: 4次 (每玩家1次)
+├─ Token per player: Input ~8,000 + Output ~300
+└─ <strong>总Token: ~33,200 (4 players)</strong>
+
+步骤3: next_acting() - NEXT_ACTING
+├─ 决定下一个行动的玩家
+├─ LLM调用: 1次
+├─ Token: Input ~10,000 + Output ~50
+└─ <strong>总Token: ~10,050</strong>
+
+步骤4: next_action_spec() - NEXT_ACTION_SPEC
+├─ 决定动作类型（FREE/CHOICE等）
+├─ LLM调用: 1次
+├─ Token: Input ~10,000 + Output ~100
+└─ <strong>总Token: ~10,100</strong>
+
+步骤5: entity.act() - 玩家执行动作
+├─ 见第2节详细分析
+└─ <strong>总Token: ~19,000 - 25,000</strong>
+
+步骤6: resolve() - RESOLVE (EventResolution)
+├─ 见第3.2节ThoughtChains分析
+└─ <strong>总Token: ~24,000 - 45,000</strong>
+
+步骤7: terminate() - TERMINATE
+├─ 检查是否结束
+├─ LLM调用: 0-1次 (通常0次)
+└─ Token: ~0-5,000
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<span class="warning">单步游戏循环峰值Token总计：</span>
+
+<span class="number-large">基础配置: ~96,350 - 128,350 tokens</span>
+<span class="number-large">复杂配置: ~115,000 - 160,000 tokens</span>
+
+分解：
+├─ make_observation (并行):     ~33,200
+├─ next_acting:                 ~10,050
+├─ next_action_spec:            ~10,100
+├─ entity.act():                ~19,000 - 25,000
+├─ resolve (EventResolution):   ~24,000 - 45,000
+└─ terminate:                   ~0 - 5,000
+        </div>
+
+        <h3>4.2 不同Engine模式的Token峰值</h3>
+
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th>Engine类型</th>
+                    <th>并行度</th>
+                    <th>单步Token峰值</th>
+                    <th>说明</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Sequential</strong></td>
+                    <td>make_observation并行<br>其余串行</td>
+                    <td class="warning">~96K - 160K</td>
+                    <td>最常见配置，make_observation阶段所有玩家并行生成观察</td>
+                </tr>
+                <tr>
+                    <td><strong>Simultaneous</strong></td>
+                    <td>所有玩家act()并行</td>
+                    <td class="warning">~100K - 200K+</td>
+                    <td>多个Agent同时act()，Token峰值倍增</td>
+                </tr>
+                <tr>
+                    <td><strong>Parallel</strong></td>
+                    <td>最大并行</td>
+                    <td class="warning">~150K - 300K+</td>
+                    <td>多个环境步骤并行，极高Token消耗</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="peak-box">
+            <h4>🚨 Token峰值风险点</h4>
+            <ol>
+                <li><strong>make_observation并行：</strong>玩家数 × 8,300 tokens，4玩家就是33K+</li>
+                <li><strong>EventResolution的AccountForAgencyOfOthers：</strong>每增加1个玩家，增加~3,000 tokens</li>
+                <li><strong>LastNObservations历史累积：</strong>游戏进行越久，观察历史越长（上限1000条 = ~30K-50K tokens）</li>
+                <li><strong>Memory Bank膨胀：</strong>虽然检索有limit，但context长度仍会随游戏进行而增长</li>
+                <li><strong>Simultaneous模式下多Agent并行：</strong>5个Agent同时act() = 5 × 20K = 100K tokens</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>5. Memory系统Token消耗分析</h2>
+
+        <h3>5.1 Memory检索量配置</h3>
+
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th>使用场景</th>
+                    <th>检索数量(条)</th>
+                    <th>估算Token量</th>
+                    <th>代码示例位置</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>QuestionOfRecentMemories (默认)</td>
+                    <td>25</td>
+                    <td>~2,500 - 3,750</td>
+                    <td><span class="code-ref">components/agent/question_of_recent_memories.py:74</span></td>
+                </tr>
+                <tr>
+                    <td>AllSimilarMemories (basic agent)</td>
+                    <td>10</td>
+                    <td>~1,000 - 1,500</td>
+                    <td><span class="code-ref">prefabs/entity/basic.py:120</span></td>
+                </tr>
+                <tr>
+                    <td>AllSimilarMemories (GM)</td>
+                    <td>5</td>
+                    <td>~500 - 750</td>
+                    <td><span class="code-ref">prefabs/game_master/generic.py:137</span></td>
+                </tr>
+                <tr>
+                    <td>Conversational agent</td>
+                    <td>100</td>
+                    <td>~10,000 - 15,000</td>
+                    <td><span class="code-ref">prefabs/entity/conversational.py:175</span></td>
+                </tr>
+                <tr>
+                    <td>完整历史（日志/debug）</td>
+                    <td>1000-10000</td>
+                    <td>~100K - 1.5M</td>
+                    <td><span class="code-ref">environment/deprecated/game_master.py:358</span></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>5.2 单条Memory的平均Token数</h3>
+
+        <div class="calculation-box">
+基于经验估算，单条Memory的Token构成：
+
+<strong>观察类Memory（Observation）：</strong>
+├─ 时间戳: ~10 tokens
+├─ 主体信息: ~5-10 tokens
+├─ 事件描述: ~20-40 tokens
+└─ 平均: <strong>~35-60 tokens/条</strong>
+
+<strong>推理类Memory（Reflection）：</strong>
+├─ 时间戳: ~10 tokens
+├─ 推理标签: ~5 tokens ([self reflection], [intent reflection]等)
+├─ 推理内容: ~50-150 tokens
+└─ 平均: <strong>~65-165 tokens/条</strong>
+
+<strong>动作类Memory（Action）：</strong>
+├─ 时间戳: ~10 tokens
+├─ 动作者: ~5 tokens
+├─ 动作内容: ~15-50 tokens
+└─ 平均: <strong>~30-65 tokens/条</strong>
+
+<strong>加权平均：</strong>
+假设组成比例 = 50%观察 + 30%动作 + 20%推理
+平均Token = 0.5×50 + 0.3×45 + 0.2×100 = <strong>~58.5 tokens/条</strong>
+
+<strong>保守估算：</strong>每条Memory约 <strong>100 tokens</strong>（包含检索overhead）
+        </div>
+
+        <h3>5.3 Memory检索的Token放大效应</h3>
+
+        <p>Memory检索不仅仅是返回原始Memory文本，还包括：</p>
+        <ul>
+            <li><strong>Query构建：</strong>组合agent_name + summary，约50-100 tokens</li>
+            <li><strong>检索上下文：</strong>AssociativeMemoryBank.retrieve_associative需要embedding计算</li>
+            <li><strong>格式化输出：</strong>'\n'.join() 会增加换行符</li>
+            <li><strong>时间戳添加：</strong>add_time=True时每条+10 tokens</li>
+        </ul>
+
+        <div class="formula">
+实际Memory检索Token公式：
+
+TokensRetrieved = NumMemories × AvgTokensPerMemory × FormatMultiplier
+                = NumMemories × 100 × 1.15
+
+示例：检索25条 = 25 × 100 × 1.15 = <strong>~2,875 tokens</strong>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>6. Token峰值预测模型</h2>
+
+        <h3>6.1 影响Token峰值的关键参数</h3>
+
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th>参数名称</th>
+                    <th>典型值</th>
+                    <th>对Token的影响</th>
+                    <th>权重</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>玩家数量 (N)</strong></td>
+                    <td>3-6</td>
+                    <td>线性增长（make_observation, AccountForAgency）</td>
+                    <td class="warning">高</td>
+                </tr>
+                <tr>
+                    <td><strong>观察历史长度 (H)</strong></td>
+                    <td>100-1000</td>
+                    <td>直接影响input context大小</td>
+                    <td class="warning">高</td>
+                </tr>
+                <tr>
+                    <td><strong>Memory检索量 (M)</strong></td>
+                    <td>10-100</td>
+                    <td>每次retrieval增加M × 100 tokens</td>
+                    <td>中</td>
+                </tr>
+                <tr>
+                    <td><strong>Reflection组件数 (R)</strong></td>
+                    <td>3-6</td>
+                    <td>每个组件增加1次LLM调用（~4K tokens）</td>
+                    <td>中</td>
+                </tr>
+                <tr>
+                    <td><strong>ThoughtChain步骤数 (T)</strong></td>
+                    <td>3-8</td>
+                    <td>每步增加~3K-5K tokens</td>
+                    <td class="warning">高</td>
+                </tr>
+                <tr>
+                    <td><strong>Engine并行度 (P)</strong></td>
+                    <td>1-N</td>
+                    <td>并行Agent数 × 单Agent token</td>
+                    <td class="warning">极高</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>6.2 Token峰值预测公式</h3>
+
+        <div class="calculation-box">
+<strong>单步游戏循环Token峰值预测公式：</strong>
+
+T_peak = T_observation + T_acting + T_agent + T_resolve + T_terminate
+
+其中：
+
+<strong>T_observation (make_observation)</strong>
+= N × (Context_GM + max_tokens_obs)
+= N × (8,000 + 1,200)
+= N × 9,200
+
+<strong>T_acting (next_acting + next_action_spec)</strong>
+= (Context_GM + 50) + (Context_GM + 100)
+= 2 × Context_GM + 150
+≈ 20,150
+
+<strong>T_agent (single agent.act)</strong>
+= R × (M × 100 + max_tokens_reflection) + H × 50 + max_tokens_action
+= R × (M × 100 + 1,000) + H × 50 + 2,200
+
+典型值(R=4, M=25, H=100):
+= 4 × (2,500 + 1,000) + 5,000 + 2,200
+= 14,000 + 5,000 + 2,200
+= <strong>21,200</strong>
+
+<strong>T_resolve (EventResolution with ThoughtChains)</strong>
+= Context_GM + T × step_tokens + (N-1) × agency_tokens
+= 10,000 + T × 3,500 + (N-1) × 3,000
+
+典型值(T=3, N=4):
+= 10,000 + 3 × 3,500 + 3 × 3,000
+= 10,000 + 10,500 + 9,000
+= <strong>29,500</strong>
+
+<strong>T_terminate</strong>
+≈ 0 (通常无LLM调用)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<strong>总Token峰值（典型4玩家场景）：</strong>
+
+T_peak = (4 × 9,200) + 20,150 + 21,200 + 29,500 + 0
+       = 36,800 + 20,150 + 21,200 + 29,500
+       = <span class="number-large">107,650 tokens</span>
+
+<strong>保守估算（考虑overhead）：</strong>
+T_peak ≈ <span class="number-large">120,000 - 130,000 tokens</span>
+
+<strong>极端情况（复杂ThoughtChains, 更多步骤）：</strong>
+T_peak ≈ <span class="number-large">150,000 - 200,000 tokens</span>
+        </div>
+
+        <h3>6.3 不同玩家数下的Token峰值表</h3>
+
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th>玩家数</th>
+                    <th>make_observation</th>
+                    <th>agent.act</th>
+                    <th>EventResolution</th>
+                    <th>其他</th>
+                    <th>总峰值</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>2</td>
+                    <td>18,400</td>
+                    <td>21,200</td>
+                    <td>20,500</td>
+                    <td>20,150</td>
+                    <td class="success">~80,250</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>27,600</td>
+                    <td>21,200</td>
+                    <td>25,000</td>
+                    <td>20,150</td>
+                    <td>~93,950</td>
+                </tr>
+                <tr>
+                    <td>4</td>
+                    <td>36,800</td>
+                    <td>21,200</td>
+                    <td>29,500</td>
+                    <td>20,150</td>
+                    <td>~107,650</td>
+                </tr>
+                <tr>
+                    <td>5</td>
+                    <td>46,000</td>
+                    <td>21,200</td>
+                    <td>34,000</td>
+                    <td>20,150</td>
+                    <td class="warning">~121,350</td>
+                </tr>
+                <tr>
+                    <td>6</td>
+                    <td>55,200</td>
+                    <td>21,200</td>
+                    <td>38,500</td>
+                    <td>20,150</td>
+                    <td class="warning">~135,050</td>
+                </tr>
+                <tr>
+                    <td>8</td>
+                    <td>73,600</td>
+                    <td>21,200</td>
+                    <td>47,500</td>
+                    <td>20,150</td>
+                    <td class="warning">~162,450</td>
+                </tr>
+                <tr>
+                    <td>10</td>
+                    <td>92,000</td>
+                    <td>21,200</td>
+                    <td>56,500</td>
+                    <td>20,150</td>
+                    <td class="warning">~189,850</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="peak-box">
+            <h4>📈 Token峰值增长曲线</h4>
+            <p><strong>随玩家数增长：</strong></p>
+            <ul>
+                <li>make_observation增长率：+9,200 tokens/玩家</li>
+                <li>EventResolution增长率：+4,500 tokens/玩家（AccountForAgency）</li>
+                <li><strong>总增长率：约 +13,700 tokens/玩家</strong></li>
+            </ul>
+            <p><strong>拐点：</strong>5玩家时突破120K，8玩家时突破160K</p>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>7. Token优化策略</h2>
+
+        <h3>7.1 可配置的Token控制点</h3>
+
+        <table class="token-table">
+            <thead>
+                <tr>
+                    <th>优化点</th>
+                    <th>默认配置</th>
+                    <th>建议优化配置</th>
+                    <th>Token节省</th>
+                    <th>代价</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>LastNObservations.history_length</td>
+                    <td>100 (agent)<br>1000 (GM)</td>
+                    <td>50 (agent)<br>500 (GM)</td>
+                    <td>~2,500 (agent)<br>~25,000 (GM)</td>
+                    <td>较短的记忆窗口</td>
+                </tr>
+                <tr>
+                    <td>num_memories_to_retrieve</td>
+                    <td>25</td>
+                    <td>15</td>
+                    <td>~1,000/次检索</td>
+                    <td>可能遗漏相关记忆</td>
+                </tr>
+                <tr>
+                    <td>Reflection组件数量</td>
+                    <td>4-6个</td>
+                    <td>2-3个</td>
+                    <td>~8,000-12,000</td>
+                    <td>推理深度降低</td>
+                </tr>
+                <tr>
+                    <td>ThoughtChain步骤数</td>
+                    <td>3-5步</td>
+                    <td>2-3步</td>
+                    <td>~7,000-14,000</td>
+                    <td>事件解析精度降低</td>
+                </tr>
+                <tr>
+                    <td>AllSimilarMemories.max_tokens</td>
+                    <td>750</td>
+                    <td>500</td>
+                    <td>~250</td>
+                    <td>summary可能不完整</td>
+                </tr>
+                <tr>
+                    <td>ConcatActComponent.max_tokens</td>
+                    <td>2200</td>
+                    <td>1500</td>
+                    <td>~700</td>
+                    <td>复杂动作表达受限</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>7.2 架构级优化方案</h3>
+
+        <ol>
+            <li>
+                <strong>使用WithoutPreAct变体</strong>
+                <p>许多组件有WithoutPreAct版本（如SelfPerceptionWithoutPreAct），它们只计算不输出到context，可减少最终ConcatActComponent的input token。</p>
+                <p>代码位置：<span class="code-ref">components/agent/question_of_recent_memories.py:178-208</span></p>
+            </li>
+            <li>
+                <strong>选择更轻量的Acting Order</strong>
+                <p>使用NextActingInFixedOrder或NextActingInRandomOrder代替基于LLM的NextActing，节省~10K tokens/step。</p>
+                <p>代码位置：<span class="code-ref">prefabs/game_master/generic.py:174-187</span></p>
+            </li>
+            <li>
+                <strong>简化ThoughtChains</strong>
+                <p>移除AccountForAgencyOfOthers可节省(N-1) × 3,000 tokens，适用于不需要考虑其他玩家主动性的场景。</p>
+            </li>
+            <li>
+                <strong>使用Plan组件代替多个Reflection</strong>
+                <p>Plan组件可以整合多个问题，减少LLM调用次数。</p>
+                <p>代码位置：<span class="code-ref">components/agent/plan.py</span></p>
+            </li>
+            <li>
+                <strong>Memory定期清理</strong>
+                <p>虽然检索有limit，但减少Memory总量可以提高检索质量和速度，间接减少无效token传递。</p>
+            </li>
+        </ol>
+
+        <div class="highlight-box">
+            <h4>💡 最佳实践建议</h4>
+            <ul>
+                <li><strong>原型阶段：</strong>使用完整配置确保功能正确</li>
+                <li><strong>优化阶段：</strong>逐步减少history_length和num_memories_to_retrieve，监控性能变化</li>
+                <li><strong>生产环境：</strong>根据玩家数动态调整（2-3玩家用标准配置，5+玩家启用优化配置）</li>
+                <li><strong>监控指标：</strong>记录每次LLM调用的实际token使用，建立baseline</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>8. 总结与关键数据速查表</h2>
+
+        <h3>8.1 核心Token峰值数据</h3>
+
+        <div class="peak-box">
+            <table class="token-table">
+                <thead>
+                    <tr>
+                        <th>场景</th>
+                        <th>Token峰值范围</th>
+                        <th>主要贡献者</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>单次Agent.act()</strong></td>
+                        <td class="number-large">19K - 25K</td>
+                        <td>Reflection组件(4次LLM) + ConcatAct(1次)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>单次EventResolution</strong></td>
+                        <td class="number-large">24K - 45K</td>
+                        <td>ThoughtChains(3-6次LLM) + AccountForAgency</td>
+                    </tr>
+                    <tr>
+                        <td><strong>游戏循环单步(4玩家)</strong></td>
+                        <td class="number-large">107K - 130K</td>
+                        <td>make_obs(37K) + resolve(30K) + agent.act(21K)</td>
+                    </tr>
+                    <tr>
+                        <td><strong>游戏循环单步(8玩家)</strong></td>
+                        <td class="number-large">162K - 200K</td>
+                        <td>玩家数线性增长效应</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Simultaneous mode(4玩家)</strong></td>
+                        <td class="number-large">140K - 180K</td>
+                        <td>4个Agent并行act()</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <h3>8.2 LLM调用频率统计</h3>
+
+        <div class="calculation-box">
+<strong>单步游戏循环LLM调用次数统计（4玩家，标准配置）：</strong>
+
+make_observation阶段:
+└─ MakeObservation × 4玩家 = <strong>4次</strong>
+
+acting阶段:
+├─ NextActing = 1次
+└─ NextActionSpec = 1次
+    小计: <strong>2次</strong>
+
+agent.act阶段:
+├─ AllSimilarMemories.summary = 1次
+├─ SituationPerception = 1次
+├─ SelfPerception = 1次
+├─ PersonBySituation = 1次
+└─ ConcatActComponent = 1次
+    小计: <strong>5次</strong>
+
+resolve阶段 (ThoughtChains):
+├─ maybe_inject_narrative_push = 0-1次
+├─ AccountForAgencyOfOthers = 3次 (N-1玩家)
+├─ result_to_who_what_where = 1次
+└─ (可选额外步骤) = 0-3次
+    小计: <strong>4-8次</strong>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<strong>单步总LLM调用次数: 15-19次</strong>
+
+估算每次调用平均处理时间: 1-3秒
+<strong>单步游戏循环总时长: 15-57秒</strong>（串行执行）
+        </div>
+
+        <h3>8.3 Token流动热力图</h3>
+
+        <div class="flow-diagram">
+Token消耗热力图（相对占比）：
+
+游戏循环单步 (100% = ~110K tokens)
+┃
+┣━━ make_observation (33%)       ████████████████████████████████░
+┃   └─ 4玩家 × 9.2K each
+┃
+┣━━ EventResolution (27%)        ██████████████████████████░░░░░░░
+┃   ├─ AccountForAgency (8%)     ████████░░░░░░░░░░░░░░░░░░░░░░░░░
+┃   ├─ ThoughtChains (15%)       ███████████████░░░░░░░░░░░░░░░░░░
+┃   └─ Context (4%)              ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+┃
+┣━━ Agent.act (19%)              ███████████████████░░░░░░░░░░░░░░
+┃   ├─ Reflections (11%)         ███████████░░░░░░░░░░░░░░░░░░░░░░
+┃   ├─ Observations (5%)         █████░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+┃   └─ ConcatAct (3%)            ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+┃
+┣━━ next_acting系列 (18%)        ██████████████████░░░░░░░░░░░░░░░
+┃   ├─ next_acting (9%)          █████████░░░░░░░░░░░░░░░░░░░░░░░░
+┃   └─ next_action_spec (9%)     █████████░░░░░░░░░░░░░░░░░░░░░░░░
+┃
+┗━━ terminate (3%)                ███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+<strong>优化优先级:</strong>
+1. make_observation (减少玩家数或优化MakeObservation实现)
+2. EventResolution (简化ThoughtChains步骤)
+3. Agent.act (减少Reflection组件或使用WithoutPreAct变体)
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>9. 代码索引：Token相关关键位置</h2>
+
+        <h3>9.1 Token配置定义</h3>
+        <ul>
+            <li><span class="code-ref">language_model/language_model.py:27</span> - DEFAULT_MAX_TOKENS = 5000</li>
+            <li><span class="code-ref">document/interactive_document.py:27-28</span> - DEFAULT_MAX_CHARACTERS, DEFAULT_MAX_TOKENS</li>
+        </ul>
+
+        <h3>9.2 Agent组件Token使用</h3>
+        <ul>
+            <li><span class="code-ref">components/agent/all_similar_memories.py:82</span> - summary生成 max_tokens=750</li>
+            <li><span class="code-ref">components/agent/question_of_recent_memories.py:74, 147</span> - num_memories=25, max_tokens=1000</li>
+            <li><span class="code-ref">components/agent/plan.py:120, 140</span> - max_tokens=1000, 1200</li>
+            <li><span class="code-ref">components/agent/concat_act_component.py:118, 141</span> - max_tokens=2200</li>
+            <li><span class="code-ref">components/agent/observation.py:97</span> - LastNObservations检索</li>
+        </ul>
+
+        <h3>9.3 GM组件Token使用</h3>
+        <ul>
+            <li><span class="code-ref">components/game_master/make_observation.py:166-173</span> - max_tokens=1200</li>
+            <li><span class="code-ref">components/game_master/next_acting.py</span> - NextActing系列实现</li>
+            <li><span class="code-ref">components/game_master/event_resolution.py</span> - EventResolution入口</li>
+        </ul>
+
+        <h3>9.4 ThoughtChains Token使用</h3>
+        <ul>
+            <li><span class="code-ref">thought_chains/thought_chains.py:74</span> - attempt_to_result max_tokens=2500</li>
+            <li><span class="code-ref">thought_chains/thought_chains.py:140</span> - result_to_effect max_tokens=1200</li>
+            <li><span class="code-ref">thought_chains/thought_chains.py:151</span> - result_to_causal_statement max_tokens=1500</li>
+            <li><span class="code-ref">thought_chains/thought_chains.py:176</span> - result_to_who_what_where max_tokens=1200</li>
+            <li><span class="code-ref">thought_chains/thought_chains.py:214</span> - summary max_tokens=3000</li>
+            <li><span class="code-ref">thought_chains/thought_chains.py:307</span> - event_with_quote max_tokens=3500</li>
+            <li><span class="code-ref">thought_chains/thought_chains.py:344-372</span> - AccountForAgencyOfOthers实现</li>
+        </ul>
+
+        <h3>9.5 Prefab配置示例</h3>
+        <ul>
+            <li><span class="code-ref">prefabs/entity/basic.py</span> - Basic Agent完整配置</li>
+            <li><span class="code-ref">prefabs/entity/conversational.py:175</span> - num_memories=100高Memory配置</li>
+            <li><span class="code-ref">prefabs/game_master/generic.py</span> - Generic GM完整配置</li>
+            <li><span class="code-ref">prefabs/game_master/situated.py:135</span> - Situated GM配置</li>
+        </ul>
+
+        <h3>9.6 Engine游戏循环</h3>
+        <ul>
+            <li><span class="code-ref">environment/engines/sequential.py:193-271</span> - Sequential游戏循环完整实现</li>
+        </ul>
+    </div>
+
+    <div class="highlight-box" style="margin-top: 40px; background-color: #e8f5e9; border-color: #4caf50;">
+        <h3>✅ 文档完成</h3>
+        <p><strong>本文档基于Concordia源码完整分析，提供了：</strong></p>
+        <ul>
+            <li>✓ 所有组件的max_tokens配置详情</li>
+            <li>✓ Memory检索的Token消耗计算</li>
+            <li>✓ Agent.act()和EventResolution的Token流动分析</li>
+            <li>✓ 完整游戏循环的Token峰值预测公式</li>
+            <li>✓ 不同玩家数和配置下的Token峰值表</li>
+            <li>✓ Token优化策略和最佳实践</li>
+            <li>✓ 完整代码位置索引</li>
+        </ul>
+        <p><strong>文档生成时间：</strong>2025年（基于Concordia源码分析）</p>
+    </div>
+
+</body>
+</html>

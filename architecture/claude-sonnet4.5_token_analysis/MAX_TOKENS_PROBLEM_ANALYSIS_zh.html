@@ -1,0 +1,1148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concordia Max Tokens 问题分析与解决方案</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #d32f2f;
+            border-bottom: 3px solid #d32f2f;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #1976d2;
+            margin-top: 30px;
+            border-left: 4px solid #1976d2;
+            padding-left: 10px;
+        }
+        h3 {
+            color: #388e3c;
+            margin-top: 20px;
+        }
+        .problem-box {
+            background-color: #ffebee;
+            border-left: 4px solid #d32f2f;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .solution-box {
+            background-color: #e8f5e9;
+            border-left: 4px solid #388e3c;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .warning-box {
+            background-color: #fff3e0;
+            border-left: 4px solid #f57c00;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .info-box {
+            background-color: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        code {
+            background-color: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background-color: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            line-height: 1.4;
+        }
+        pre code {
+            background-color: transparent;
+            color: #aed581;
+            padding: 0;
+        }
+        .code-ref {
+            color: #1976d2;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #1976d2;
+            color: white;
+        }
+        tr:nth-child(even) {
+            background-color: #f5f5f5;
+        }
+        .severity-high {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .severity-medium {
+            color: #f57c00;
+            font-weight: bold;
+        }
+        .severity-low {
+            color: #388e3c;
+        }
+        ul.checklist {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        ul.checklist li:before {
+            content: "✓ ";
+            color: #388e3c;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        .flow-diagram {
+            background-color: #fafafa;
+            border: 2px solid #e0e0e0;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 Concordia Max Tokens 问题深度分析与解决方案</h1>
+
+        <div class="info-box">
+            <strong>文档概述</strong><br>
+            本文档分析了Concordia框架在实际运行中遇到的max_tokens限制问题，包括：
+            <ul>
+                <li>Gemini模型返回空响应导致的程序异常</li>
+                <li>max_tokens设计限制与LLM自然发挥的矛盾</li>
+                <li>当前代码中的异常处理缺陷</li>
+                <li>完整的多层次解决方案</li>
+            </ul>
+            <strong>基于源码版本：</strong> 当前Concordia主分支<br>
+            <strong>分析日期：</strong> 2025-01-10
+        </div>
+
+        <h2>📋 目录</h2>
+        <ol>
+            <li><a href="#problem-root">问题根源分析</a></li>
+            <li><a href="#failure-scenarios">典型失败场景</a></li>
+            <li><a href="#code-defects">代码缺陷定位</a></li>
+            <li><a href="#solutions">多层次解决方案</a></li>
+            <li><a href="#implementation">代码实现方案</a></li>
+            <li><a href="#best-practices">最佳实践与建议</a></li>
+        </ol>
+
+        <h2 id="problem-root">1️⃣ 问题根源分析</h2>
+
+        <h3>1.1 核心矛盾</h3>
+        <div class="problem-box">
+            <strong>本质冲突：设计约束 vs. 模型自然发挥</strong>
+            <ul>
+                <li><strong>设计侧：</strong>框架需要设置max_tokens来控制成本、性能和响应时间</li>
+                <li><strong>模型侧：</strong>LLM在某些复杂对话流程中需要更多tokens才能完整表达</li>
+                <li><strong>后果：</strong>强行截断会严重影响世界模拟的连贯性和真实性</li>
+            </ul>
+        </div>
+
+        <h3>1.2 Gemini模型特殊性</h3>
+        <div class="warning-box">
+            <strong>⚠️ Gemini模型的三个关键特性</strong>
+
+            <p><strong>特性1：max_tokens下限要求</strong></p>
+            <p class="code-ref">google_aistudio_model.py:211</p>
+            <pre><code>max_tokens=256,  # This is wasteful, but Gemini blocks lower values.</code></pre>
+            <p>Gemini要求max_tokens至少为256，否则可能返回空响应或阻止请求。</p>
+
+            <p><strong>特性2：安全过滤机制</strong></p>
+            <p class="code-ref">google_aistudio_model.py:75-92</p>
+            <pre><code>DEFAULT_SAFETY_SETTINGS = (
+    {'category': 'HARM_CATEGORY_HARASSMENT', 'threshold': 'BLOCK_MEDIUM_AND_ABOVE'},
+    {'category': 'HARM_CATEGORY_HATE_SPEECH', 'threshold': 'BLOCK_MEDIUM_AND_ABOVE'},
+    {'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'threshold': 'BLOCK_MEDIUM_AND_ABOVE'},
+    {'category': 'HARM_CATEGORY_DANGEROUS_CONTENT', 'threshold': 'BLOCK_MEDIUM_AND_ABOVE'},
+)</code></pre>
+            <p>安全过滤可能导致响应被阻止，返回空结果。</p>
+
+            <p><strong>特性3：空响应返回方式</strong></p>
+            <p>当max_tokens耗尽或触发安全过滤时，<code>sample.candidates</code>可能为空数组，访问<code>candidates[0]</code>会抛出IndexError。</p>
+        </div>
+
+        <h3>1.3 框架中的max_tokens配置</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>组件/方法</th>
+                    <th>默认max_tokens</th>
+                    <th>代码位置</th>
+                    <th>风险等级</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>DEFAULT_MAX_TOKENS (基础)</td>
+                    <td>50</td>
+                    <td>interactive_document.py:27-28</td>
+                    <td class="severity-high">高</td>
+                </tr>
+                <tr>
+                    <td>question_of_recent_memories</td>
+                    <td>1000</td>
+                    <td>question_of_recent_memories.py:147</td>
+                    <td class="severity-medium">中</td>
+                </tr>
+                <tr>
+                    <td>all_similar_memories (摘要)</td>
+                    <td>750</td>
+                    <td>all_similar_memories.py:82</td>
+                    <td class="severity-medium">中</td>
+                </tr>
+                <tr>
+                    <td>concat_act_component (行动)</td>
+                    <td>2200</td>
+                    <td>concat_act_component.py:141</td>
+                    <td class="severity-low">低</td>
+                </tr>
+                <tr>
+                    <td>thought_chains (各步骤)</td>
+                    <td>1200-3500</td>
+                    <td>thought_chains.py:各处</td>
+                    <td class="severity-medium">中</td>
+                </tr>
+                <tr>
+                    <td>open_question_diversified</td>
+                    <td>50 × num_samples</td>
+                    <td>interactive_document.py:275</td>
+                    <td class="severity-high">高</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2 id="failure-scenarios">2️⃣ 典型失败场景</h2>
+
+        <h3>2.1 场景1：open_question_diversified 崩溃</h3>
+        <div class="problem-box">
+            <strong>失败路径：</strong>
+            <div class="flow-diagram">
+用户调用 open_question_diversified(num_samples=10)
+    ↓
+计算 max_tokens = 50 × 10 = 500 (小于Gemini最小值256)
+    ↓
+Gemini返回空响应 → sample.candidates = []
+    ↓
+google_aistudio_model.py:178 访问 candidates[0]
+    ↓
+❌ IndexError (因为只捕获了ValueError)
+    ↓
+退回到 sample_text 返回空字符串 ''
+    ↓
+interactive_document.py:283 → candidates.splitlines() → []
+    ↓
+line 294 → random.choice([])
+    ↓
+💥 <strong>IndexError: Cannot choose from an empty sequence</strong>
+            </div>
+
+            <p><strong>代码位置：</strong></p>
+            <p class="code-ref">interactive_document.py:273-294</p>
+            <pre><code>candidates = self._model.sample_text(
+    prompt=self._model_view.text(),
+    max_tokens=max_tokens * num_samples,  # 可能小于256
+    ...
+)
+candidates = candidates.splitlines()  # 空字符串 → []
+...
+response = random.choice(candidates)  # ❌ IndexError!</code></pre>
+        </div>
+
+        <h3>2.2 场景2：thought_chains 空事件注入</h3>
+        <div class="problem-box">
+            <strong>失败路径：</strong>
+            <div class="flow-diagram">
+EventResolution中调用 maybe_inject_narrative_push
+    ↓
+生成 plausible_events (max_tokens=1500)
+    ↓
+LLM因内容复杂超出限制，被截断或返回不完整列表
+    ↓
+thought_chains.py:681 → plausible_events.split('\n')
+    ↓
+得到 ['', '', ''] (空行或不完整)
+    ↓
+line 683 → random.choice(plausible_events)
+    ↓
+⚠️ 选中空字符串，注入无效事件到世界模拟
+    ↓
+🎭 <strong>世界模拟质量严重下降</strong>
+            </div>
+
+            <p class="code-ref">thought_chains.py:675-683</p>
+        </div>
+
+        <h3>2.3 场景3：多轮对话中的累积截断</h3>
+        <div class="warning-box">
+            <strong>渐进式失败：</strong>
+            <ol>
+                <li><strong>第1轮：</strong>LLM输出被截断，丢失关键上下文（如角色状态变化）</li>
+                <li><strong>第2轮：</strong>基于不完整信息的推理，产生逻辑断裂</li>
+                <li><strong>第3轮：</strong>错误累积，角色行为开始不一致</li>
+                <li><strong>第N轮：</strong>世界模拟完全失去连贯性</li>
+            </ol>
+            <p><strong>影响范围：</strong>整个游戏循环的100-1000步模拟</p>
+        </div>
+
+        <h2 id="code-defects">3️⃣ 代码缺陷定位</h2>
+
+        <h3>3.1 缺陷矩阵</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>文件</th>
+                    <th>行号</th>
+                    <th>缺陷类型</th>
+                    <th>严重程度</th>
+                    <th>影响</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>google_aistudio_model.py</td>
+                    <td>177-183</td>
+                    <td>异常捕获不完整</td>
+                    <td class="severity-high">高</td>
+                    <td>只捕获ValueError，未捕获IndexError</td>
+                </tr>
+                <tr>
+                    <td>cloud_vertex_model.py</td>
+                    <td>134-140</td>
+                    <td>异常捕获不完整</td>
+                    <td class="severity-high">高</td>
+                    <td>同上</td>
+                </tr>
+                <tr>
+                    <td>interactive_document.py</td>
+                    <td>294</td>
+                    <td>空数组未检查</td>
+                    <td class="severity-high">高</td>
+                    <td>random.choice([]) → IndexError</td>
+                </tr>
+                <tr>
+                    <td>interactive_document.py</td>
+                    <td>289-292</td>
+                    <td>Warning不阻止执行</td>
+                    <td class="severity-high">高</td>
+                    <td>raise Warning不会中断，继续执行导致错误</td>
+                </tr>
+                <tr>
+                    <td>thought_chains.py</td>
+                    <td>681-683</td>
+                    <td>空字符串未检查</td>
+                    <td class="severity-medium">中</td>
+                    <td>split后可能得到空元素</td>
+                </tr>
+                <tr>
+                    <td>多处组件</td>
+                    <td>N/A</td>
+                    <td>缺少重试机制</td>
+                    <td class="severity-medium">中</td>
+                    <td>一次失败即放弃</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>3.2 缺陷详细分析</h3>
+
+        <h4>缺陷1: 异常捕获不完整 (google_aistudio_model.py:177-183)</h4>
+        <pre><code>try:
+    response = sample.candidates[0].content.parts[0].text
+except ValueError as e:  # ❌ 只捕获ValueError
+    print('An error occurred: ', e)
+    print(f'prompt: {prompt}')
+    print(f'sample: {sample}')
+    response = ''</code></pre>
+
+        <div class="problem-box">
+            <strong>问题：</strong>
+            <ul>
+                <li>当<code>sample.candidates</code>为空数组时，<code>candidates[0]</code>会抛出<code>IndexError</code></li>
+                <li>当前只捕获<code>ValueError</code>，<code>IndexError</code>会导致程序崩溃</li>
+                <li>即使捕获，返回空字符串<code>''</code>也没有被上层代码适当处理</li>
+            </ul>
+        </div>
+
+        <h4>缺陷2: Warning不阻止执行 (interactive_document.py:289-292)</h4>
+        <pre><code>if len(candidates) < 2:
+    raise Warning(  # ❌ Warning不会中断执行
+        f'LLM generated only {len(candidates)} initial answers.'
+    )
+candidates = [re.sub(r'^\d+\.\s*', '', line) for line in candidates]
+response = random.choice(candidates)  # 继续执行，导致IndexError</code></pre>
+
+        <div class="problem-box">
+            <strong>问题：</strong>
+            <ul>
+                <li><code>raise Warning</code>在Python中不会中断执行（与<code>raise Exception</code>不同）</li>
+                <li>程序继续执行到<code>random.choice([])</code>，导致<code>IndexError</code></li>
+                <li>应该使用<code>raise ValueError</code>或提供默认响应</li>
+            </ul>
+        </div>
+
+        <h2 id="solutions">4️⃣ 多层次解决方案</h2>
+
+        <h3>4.1 解决方案架构</h3>
+        <div class="info-box">
+            <strong>三层防御体系：</strong>
+            <ol>
+                <li><strong>底层（Model层）：</strong>完善异常处理，确保永不崩溃</li>
+                <li><strong>中层（Document层）：</strong>智能重试与降级策略</li>
+                <li><strong>上层（Component层）：</strong>自适应max_tokens与质量监控</li>
+            </ol>
+        </div>
+
+        <h3>4.2 Layer 1: Model层增强异常处理</h3>
+        <div class="solution-box">
+            <strong>✓ 解决目标：</strong>
+            <ul class="checklist">
+                <li>捕获所有可能的异常类型（IndexError, ValueError, AttributeError等）</li>
+                <li>提供有意义的默认响应而非空字符串</li>
+                <li>记录详细的失败信息用于调试和监控</li>
+                <li>为上层提供失败信号（如返回特殊标记或抛出自定义异常）</li>
+            </ul>
+        </div>
+
+        <h3>4.3 Layer 2: Document层智能重试</h3>
+        <div class="solution-box">
+            <strong>✓ 策略组合：</strong>
+            <ul class="checklist">
+                <li><strong>策略1：</strong>空响应检测 → 自动增加max_tokens重试（×1.5, ×2, ×3）</li>
+                <li><strong>策略2：</strong>温度调节 → 首次失败后逐步提高温度增加多样性</li>
+                <li><strong>策略3：</strong>降级响应 → 多次失败后使用简化问题或默认答案</li>
+                <li><strong>策略4：</strong>候选池备份 → 保存历史有效响应作为应急池</li>
+            </ul>
+        </div>
+
+        <h3>4.4 Layer 3: Component层自适应优化</h3>
+        <div class="solution-box">
+            <strong>✓ 自适应机制：</strong>
+            <ul class="checklist">
+                <li><strong>动态max_tokens：</strong>根据历史截断率自动调整</li>
+                <li><strong>上下文压缩：</strong>当接近限制时，压缩非关键信息</li>
+                <li><strong>分段生成：</strong>将长输出拆分为多个小段生成后合并</li>
+                <li><strong>质量监控：</strong>实时检测输出完整性和连贯性</li>
+            </ul>
+        </div>
+
+        <h2 id="implementation">5️⃣ 代码实现方案</h2>
+
+        <h3>5.1 方案A: Model层健壮性增强</h3>
+        <p><strong>修改文件：</strong> <code>concordia/language_model/google_aistudio_model.py</code></p>
+        <p><strong>修改位置：</strong> line 177-183</p>
+
+        <pre><code># ===== 原代码 =====
+try:
+    response = sample.candidates[0].content.parts[0].text
+except ValueError as e:
+    print('An error occurred: ', e)
+    print(f'prompt: {prompt}')
+    print(f'sample: {sample}')
+    response = ''
+
+# ===== 改进版本 =====
+try:
+    # 检查candidates是否为空
+    if not sample.candidates:
+        raise IndexError('No candidates returned by the model')
+
+    # 尝试获取响应文本
+    response = sample.candidates[0].content.parts[0].text
+
+    # 检查响应是否有效
+    if not response or not response.strip():
+        raise ValueError('Empty response from model')
+
+except (ValueError, IndexError, AttributeError) as e:
+    # 完整的异常捕获
+    print(f'❌ LLM Response Error: {type(e).__name__}: {e}')
+    print(f'Prompt (first 200 chars): {prompt[:200]}...')
+    print(f'Sample: {sample}')
+
+    # 检查是否因为安全过滤
+    if sample.candidates and hasattr(sample.candidates[0], 'safety_ratings'):
+        print(f'Safety ratings: {sample.candidates[0].safety_ratings}')
+
+    # 检查finish_reason
+    if sample.candidates and hasattr(sample.candidates[0], 'finish_reason'):
+        finish_reason = sample.candidates[0].finish_reason
+        print(f'Finish reason: {finish_reason}')
+
+        # 根据finish_reason提供更好的默认响应
+        if 'SAFETY' in str(finish_reason):
+            response = '[RESPONSE_BLOCKED_BY_SAFETY_FILTER]'
+        elif 'MAX_TOKENS' in str(finish_reason) or 'LENGTH' in str(finish_reason):
+            response = '[RESPONSE_TRUNCATED_BY_MAX_TOKENS]'
+        else:
+            response = '[RESPONSE_GENERATION_FAILED]'
+    else:
+        response = '[MODEL_RETURNED_NO_CANDIDATES]'
+
+    # 记录到测量系统（如果可用）
+    if self._measurements is not None:
+        self._measurements.publish_datum(
+            self._channel,
+            {
+                'error_type': type(e).__name__,
+                'error_message': str(e),
+                'has_candidates': bool(sample.candidates),
+            }
+        )</code></pre>
+
+        <h3>5.2 方案B: Document层智能重试</h3>
+        <p><strong>修改文件：</strong> <code>concordia/document/interactive_document.py</code></p>
+        <p><strong>修改方法：</strong> <code>open_question_diversified</code></p>
+
+        <pre><code>def open_question_diversified(
+    self,
+    question: str,
+    *,
+    forced_response: str | None = None,
+    num_samples: int = 10,
+    max_tokens: int = DEFAULT_MAX_TOKENS,
+    temperature: float = language_model.DEFAULT_TEMPERATURE,
+    top_p: float = language_model.DEFAULT_TOP_P,
+    top_k: int = language_model.DEFAULT_TOP_K,
+    terminators: Collection[str] = (),
+    question_label: str = 'Question',
+    answer_label: str = 'Answer',
+    # 新增参数
+    max_retries: int = 3,
+    min_valid_candidates: int = 2,
+    fallback_response: str | None = None,
+) -> str:
+    """增强版：带重试和降级的多样化问答"""
+
+    # ... truncate_string定义保持不变 ...
+
+    self._question(
+        f'Task: generate {num_samples} {answer_label}s to the following'
+        f' {question_label}:\nQuestion: {question}\n'
+    )
+
+    if forced_response is not None:
+        # 强制响应路径保持不变
+        self._response(f'Final {answer_label}: ')
+        self._model_response(f'{forced_response}\n')
+        return forced_response
+
+    # ===== 新增：智能重试逻辑 =====
+    candidates = []
+    current_max_tokens = max_tokens * num_samples
+    current_temperature = temperature
+
+    for attempt in range(max_retries):
+        # 确保max_tokens满足Gemini最小要求
+        current_max_tokens = max(current_max_tokens, 256)
+
+        self._response(f'{answer_label}s (attempt {attempt+1}):\n1. ')
+
+        raw_response = self._model.sample_text(
+            prompt=self._model_view.text(),
+            max_tokens=current_max_tokens,
+            terminators=[],
+            temperature=current_temperature,
+            top_p=top_p,
+            top_k=top_k,
+        )
+
+        # 检查响应是否有效
+        if not raw_response or raw_response.startswith('[RESPONSE_'):
+            self.debug(f'Attempt {attempt+1} failed: {raw_response}')
+
+            # 调整参数准备重试
+            current_max_tokens = int(current_max_tokens * 1.5)
+            current_temperature = min(current_temperature + 0.2, 1.5)
+            continue
+
+        self.statement(raw_response)
+
+        # 解析候选答案
+        candidates = [line.strip() for line in raw_response.splitlines() if line.strip()]
+        candidates = [re.sub(r'^\d+\.\s*', '', line) for line in candidates]
+        candidates = [c for c in candidates if c]  # 移除空字符串
+
+        # 检查是否获得足够的有效候选
+        if len(candidates) >= min_valid_candidates:
+            self.debug(f'Successfully got {len(candidates)} candidates on attempt {attempt+1}')
+            break
+        else:
+            self.debug(
+                f'Attempt {attempt+1}: Only got {len(candidates)} candidates, '
+                f'need at least {min_valid_candidates}'
+            )
+
+            # 调整参数准备重试
+            current_max_tokens = int(current_max_tokens * 1.5)
+            current_temperature = min(current_temperature + 0.2, 1.5)
+
+    # ===== 新增：降级处理 =====
+    if len(candidates) == 0:
+        # 完全失败，使用降级响应
+        if fallback_response:
+            response = fallback_response
+            self.debug(f'Using fallback response: {response}')
+        else:
+            # 简化问题，只要求单个答案
+            self.debug('Falling back to simple open_question')
+            response = self.open_question(
+                question=question,
+                max_tokens=max_tokens * 3,  # 给更多token
+                temperature=current_temperature,
+                question_label=question_label,
+                answer_label=answer_label,
+            )
+    elif len(candidates) == 1:
+        # 只有一个候选，直接使用
+        response = candidates[0]
+        self.debug(f'Only one candidate available: {response}')
+    else:
+        # 正常路径：从候选中随机选择
+        response = random.choice(candidates)
+        response = truncate_string(response, terminators)
+
+    self._response(f'Final {answer_label}: ')
+    self._model_response(f'{response}\n')
+    return response</code></pre>
+
+        <h3>5.3 方案C: 自适应Max Tokens管理器</h3>
+        <p><strong>新增文件：</strong> <code>concordia/utils/adaptive_tokens.py</code></p>
+
+        <pre><code>"""自适应Token管理：根据运行时表现动态调整max_tokens"""
+
+from collections import deque
+from dataclasses import dataclass
+from typing import Optional
+import time
+
+
+@dataclass
+class TokenUsageStats:
+    """Token使用统计"""
+    requested: int
+    actual: int  # 实际使用的token数
+    truncated: bool
+    latency: float  # 响应延迟（秒）
+    timestamp: float
+
+
+class AdaptiveTokenManager:
+    """自适应Token管理器
+
+    根据历史表现自动调整max_tokens，平衡质量、成本和延迟。
+    """
+
+    def __init__(
+        self,
+        base_max_tokens: int = 1000,
+        min_max_tokens: int = 256,  # Gemini最小值
+        max_max_tokens: int = 8192,
+        history_window: int = 100,
+        truncation_threshold: float = 0.3,  # 截断率阈值
+        adjustment_factor: float = 1.5,
+    ):
+        self.base_max_tokens = base_max_tokens
+        self.min_max_tokens = min_max_tokens
+        self.max_max_tokens = max_max_tokens
+        self.history_window = history_window
+        self.truncation_threshold = truncation_threshold
+        self.adjustment_factor = adjustment_factor
+
+        self._history: deque[TokenUsageStats] = deque(maxlen=history_window)
+        self._current_max_tokens = base_max_tokens
+
+    def record_usage(
+        self,
+        requested: int,
+        actual: int,
+        truncated: bool,
+        latency: float,
+    ) -> None:
+        """记录一次token使用"""
+        self._history.append(TokenUsageStats(
+            requested=requested,
+            actual=actual,
+            truncated=truncated,
+            latency=latency,
+            timestamp=time.time(),
+        ))
+
+        # 触发自适应调整
+        self._adjust_if_needed()
+
+    def get_max_tokens(self, context: Optional[str] = None) -> int:
+        """获取当前推荐的max_tokens
+
+        Args:
+            context: 可选的上下文标识，用于不同场景使用不同策略
+
+        Returns:
+            推荐的max_tokens值
+        """
+        # 确保不低于最小值（Gemini要求）
+        return max(self._current_max_tokens, self.min_max_tokens)
+
+    def _adjust_if_needed(self) -> None:
+        """根据历史表现调整max_tokens"""
+        if len(self._history) < 10:  # 数据不足
+            return
+
+        # 计算最近的截断率
+        recent_truncations = sum(1 for stat in self._history if stat.truncated)
+        truncation_rate = recent_truncations / len(self._history)
+
+        # 计算平均使用率
+        avg_usage_rate = sum(
+            stat.actual / stat.requested
+            for stat in self._history
+        ) / len(self._history)
+
+        # 决策逻辑
+        if truncation_rate > self.truncation_threshold:
+            # 截断太多，增加max_tokens
+            new_value = int(self._current_max_tokens * self.adjustment_factor)
+            self._current_max_tokens = min(new_value, self.max_max_tokens)
+            print(f'📈 Increasing max_tokens to {self._current_max_tokens} '
+                  f'(truncation rate: {truncation_rate:.1%})')
+
+        elif avg_usage_rate < 0.6 and truncation_rate < 0.05:
+            # 使用率低且很少截断，减少max_tokens节省成本
+            new_value = int(self._current_max_tokens / self.adjustment_factor)
+            self._current_max_tokens = max(new_value, self.min_max_tokens)
+            print(f'📉 Decreasing max_tokens to {self._current_max_tokens} '
+                  f'(usage rate: {avg_usage_rate:.1%})')
+
+    def get_stats_summary(self) -> dict:
+        """获取统计摘要"""
+        if not self._history:
+            return {}
+
+        truncation_rate = sum(1 for s in self._history if s.truncated) / len(self._history)
+        avg_latency = sum(s.latency for s in self._history) / len(self._history)
+        avg_usage_rate = sum(s.actual / s.requested for s in self._history) / len(self._history)
+
+        return {
+            'current_max_tokens': self._current_max_tokens,
+            'truncation_rate': truncation_rate,
+            'avg_usage_rate': avg_usage_rate,
+            'avg_latency': avg_latency,
+            'total_calls': len(self._history),
+        }
+
+
+# ===== 使用示例 =====
+
+# 在InteractiveDocument中集成
+class AdaptiveInteractiveDocument(InteractiveDocument):
+    """带自适应token管理的文档"""
+
+    def __init__(self, model, contents=(), rng=None):
+        super().__init__(model, contents, rng)
+        self._token_manager = AdaptiveTokenManager()
+
+    def open_question(self, question: str, **kwargs):
+        """增强版open_question，自动优化max_tokens"""
+        # 获取推荐的max_tokens
+        if 'max_tokens' not in kwargs:
+            kwargs['max_tokens'] = self._token_manager.get_max_tokens()
+
+        # 记录开始时间
+        start_time = time.time()
+
+        # 调用原方法
+        response = super().open_question(question, **kwargs)
+
+        # 记录使用情况
+        latency = time.time() - start_time
+        truncated = response.endswith('...')  # 简化检测
+        actual_tokens = len(response) // 4  # 粗略估计
+
+        self._token_manager.record_usage(
+            requested=kwargs['max_tokens'],
+            actual=actual_tokens,
+            truncated=truncated,
+            latency=latency,
+        )
+
+        return response
+
+    def get_token_stats(self):
+        """获取token使用统计"""
+        return self._token_manager.get_stats_summary()</code></pre>
+
+        <h3>5.4 方案D: 全局配置覆盖（快速修复）</h3>
+        <p><strong>适用场景：</strong>紧急修复，不修改源码</p>
+
+        <pre><code># ===== 在启动脚本中添加 =====
+
+import concordia.document.interactive_document as interactive_doc
+import concordia.language_model.language_model as lm
+
+# 方法1: 提高全局默认值
+interactive_doc.DEFAULT_MAX_CHARACTERS = 2000  # 原值200
+interactive_doc.DEFAULT_MAX_TOKENS = 500        # 原值50
+lm.DEFAULT_MAX_TOKENS = 1000                    # 原值5000（实际很少用）
+
+# 方法2: Monkey patch修复critical bugs
+original_open_question_diversified = interactive_doc.InteractiveDocument.open_question_diversified
+
+def safe_open_question_diversified(self, question, **kwargs):
+    """安全包装版本"""
+    try:
+        return original_open_question_diversified(self, question, **kwargs)
+    except IndexError as e:
+        # 捕获random.choice([])错误
+        print(f'⚠️ Caught IndexError in open_question_diversified: {e}')
+        print(f'Falling back to simple open_question')
+        # 降级到简单版本
+        return self.open_question(
+            question=question,
+            max_tokens=kwargs.get('max_tokens', 500) * 3,
+            temperature=kwargs.get('temperature', 1.0),
+        )
+
+# 替换方法
+interactive_doc.InteractiveDocument.open_question_diversified = safe_open_question_diversified
+
+print('✅ Applied emergency patches for max_tokens issues')</code></pre>
+
+        <h2 id="best-practices">6️⃣ 最佳实践与建议</h2>
+
+        <h3>6.1 立即行动清单</h3>
+        <div class="solution-box">
+            <strong>🚀 立即实施（紧急）</strong>
+            <ol>
+                <li><strong>修复IndexError：</strong>在<code>google_aistudio_model.py</code>和<code>cloud_vertex_model.py</code>中增加完整异常捕获</li>
+                <li><strong>修复Warning：</strong>将<code>interactive_document.py:290</code>的<code>raise Warning</code>改为<code>raise ValueError</code>或提供降级响应</li>
+                <li><strong>添加空检查：</strong>在所有<code>random.choice()</code>调用前检查数组非空</li>
+                <li><strong>提高最小值：</strong>确保所有max_tokens配置不低于256（Gemini要求）</li>
+            </ol>
+        </div>
+
+        <h3>6.2 短期优化（1-2周）</h3>
+        <div class="info-box">
+            <strong>📊 数据驱动优化</strong>
+            <ol>
+                <li><strong>添加监控：</strong>记录所有LLM调用的token使用、截断情况、失败原因</li>
+                <li><strong>分析热点：</strong>找出最容易截断的组件和场景</li>
+                <li><strong>调整配置：</strong>基于数据调高高截断率组件的max_tokens</li>
+                <li><strong>实施重试：</strong>为关键组件添加智能重试逻辑（参考方案B）</li>
+            </ol>
+        </div>
+
+        <h3>6.3 长期架构（1-3个月）</h3>
+        <div class="info-box">
+            <strong>🏗️ 架构升级</strong>
+            <ol>
+                <li><strong>自适应系统：</strong>实施AdaptiveTokenManager（方案C）</li>
+                <li><strong>上下文压缩：</strong>当接近限制时智能压缩非关键信息</li>
+                <li><strong>分段生成：</strong>支持长输出分多次生成后合并</li>
+                <li><strong>质量监控：</strong>实时检测输出完整性，触发自动重试或降级</li>
+                <li><strong>模型切换：</strong>允许在运行时切换不同模型（如Gemini遇到问题时切换到GPT-4）</li>
+            </ol>
+        </div>
+
+        <h3>6.4 配置推荐表</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>组件/场景</th>
+                    <th>当前值</th>
+                    <th>推荐值（保守）</th>
+                    <th>推荐值（质量优先）</th>
+                    <th>理由</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>DEFAULT_MAX_TOKENS</td>
+                    <td>50</td>
+                    <td>256</td>
+                    <td>512</td>
+                    <td>Gemini最小要求 + 缓冲</td>
+                </tr>
+                <tr>
+                    <td>question_of_recent_memories</td>
+                    <td>1000</td>
+                    <td>1500</td>
+                    <td>2500</td>
+                    <td>反思需要充分表达</td>
+                </tr>
+                <tr>
+                    <td>all_similar_memories (摘要)</td>
+                    <td>750</td>
+                    <td>1000</td>
+                    <td>1500</td>
+                    <td>摘要质量影响检索效果</td>
+                </tr>
+                <tr>
+                    <td>concat_act_component</td>
+                    <td>2200</td>
+                    <td>2200</td>
+                    <td>3000</td>
+                    <td>已经较高，保守不变</td>
+                </tr>
+                <tr>
+                    <td>open_question_diversified</td>
+                    <td>50 × N</td>
+                    <td>max(256, 100 × N)</td>
+                    <td>max(512, 150 × N)</td>
+                    <td>确保满足Gemini要求</td>
+                </tr>
+                <tr>
+                    <td>thought_chains (各步骤)</td>
+                    <td>1200-3500</td>
+                    <td>1500-4000</td>
+                    <td>2000-5000</td>
+                    <td>事件推理需要充分思考</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>6.5 代码审查检查清单</h3>
+        <ul class="checklist">
+            <li><strong>异常处理：</strong>是否捕获了所有可能的异常类型（IndexError, ValueError, AttributeError等）</li>
+            <li><strong>空值检查：</strong>调用<code>random.choice()</code>, <code>[0]</code>, <code>.split()</code>前是否检查非空</li>
+            <li><strong>Gemini限制：</strong>max_tokens是否不低于256</li>
+            <li><strong>降级路径：</strong>失败时是否有备用方案（重试、简化、默认值）</li>
+            <li><strong>日志记录：</strong>是否记录了足够的信息用于调试（prompt片段、错误类型、finish_reason等）</li>
+            <li><strong>监控埋点：</strong>是否将关键指标发送到measurements系统</li>
+        </ul>
+
+        <h3>6.6 运行时监控指标</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>指标</th>
+                    <th>正常范围</th>
+                    <th>警告阈值</th>
+                    <th>应对措施</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>截断率</td>
+                    <td>&lt; 5%</td>
+                    <td>&gt; 15%</td>
+                    <td>增加max_tokens或实施压缩</td>
+                </tr>
+                <tr>
+                    <td>空响应率</td>
+                    <td>&lt; 1%</td>
+                    <td>&gt; 5%</td>
+                    <td>检查模型配置，添加重试</td>
+                </tr>
+                <tr>
+                    <td>异常率</td>
+                    <td>&lt; 0.1%</td>
+                    <td>&gt; 1%</td>
+                    <td>立即修复代码缺陷</td>
+                </tr>
+                <tr>
+                    <td>平均token使用率</td>
+                    <td>60-90%</td>
+                    <td>&lt; 40% 或 &gt; 95%</td>
+                    <td>调整max_tokens配置</td>
+                </tr>
+                <tr>
+                    <td>重试成功率</td>
+                    <td>&gt; 80%</td>
+                    <td>&lt; 50%</td>
+                    <td>优化重试策略或问题设计</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>6.7 不同模型的适配建议</h3>
+        <div class="warning-box">
+            <strong>⚙️ 模型特性差异</strong>
+            <table>
+                <thead>
+                    <tr>
+                        <th>模型</th>
+                        <th>最小max_tokens</th>
+                        <th>最大max_tokens</th>
+                        <th>特殊注意事项</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Gemini 1.5 Pro</td>
+                        <td>256</td>
+                        <td>8192</td>
+                        <td>严格的安全过滤，容易返回空</td>
+                    </tr>
+                    <tr>
+                        <td>GPT-4</td>
+                        <td>1</td>
+                        <td>4096</td>
+                        <td>成本高，但稳定性好</td>
+                    </tr>
+                    <tr>
+                        <td>GPT-3.5 Turbo</td>
+                        <td>1</td>
+                        <td>4096</td>
+                        <td>性价比高，质量略低</td>
+                    </tr>
+                    <tr>
+                        <td>Claude 2</td>
+                        <td>1</td>
+                        <td>100000</td>
+                        <td>超长上下文，适合复杂场景</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <p><strong>建议：</strong>实施模型抽象层，根据场景自动选择最合适的模型。例如：</p>
+            <ul>
+                <li>简单问答 → GPT-3.5 Turbo（成本优化）</li>
+                <li>复杂推理 → GPT-4 或 Claude 2（质量优先）</li>
+                <li>长上下文 → Claude 2（技术优势）</li>
+            </ul>
+        </div>
+
+        <h3>6.8 总结：DO vs. DON'T</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 50%;">✅ DO (推荐做法)</th>
+                    <th style="width: 50%;">❌ DON'T (避免做法)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>捕获所有可能的异常类型</td>
+                    <td>只捕获单一异常类型（如只捕获ValueError）</td>
+                </tr>
+                <tr>
+                    <td>在访问数组前检查非空</td>
+                    <td>假设数组总是有元素</td>
+                </tr>
+                <tr>
+                    <td>提供有意义的降级响应</td>
+                    <td>返回空字符串后不处理</td>
+                </tr>
+                <tr>
+                    <td>记录详细的失败信息</td>
+                    <td>静默失败，不记录日志</td>
+                </tr>
+                <tr>
+                    <td>实施智能重试（增加max_tokens、调整温度）</td>
+                    <td>一次失败就放弃</td>
+                </tr>
+                <tr>
+                    <td>根据历史表现自适应调整</td>
+                    <td>使用固定的max_tokens配置</td>
+                </tr>
+                <tr>
+                    <td>监控关键指标（截断率、空响应率等）</td>
+                    <td>不收集运行时数据</td>
+                </tr>
+                <tr>
+                    <td>考虑模型特性差异（如Gemini最小256）</td>
+                    <td>假设所有模型行为一致</td>
+                </tr>
+                <tr>
+                    <td>分层防御（Model层 + Document层 + Component层）</td>
+                    <td>只在一个层面处理</td>
+                </tr>
+                <tr>
+                    <td>平衡质量、成本和延迟</td>
+                    <td>只考虑成本或只考虑质量</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>📚 附录：问题诊断流程图</h2>
+        <div class="flow-diagram">
+遇到LLM相关异常
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 步骤1: 识别异常类型                                   │
+├─────────────────────────────────────────────────────┤
+│ • IndexError: 访问空数组/列表                         │
+│ • ValueError: 无效值或格式错误                        │
+│ • AttributeError: 属性不存在                         │
+│ • InvalidResponseError: 自定义异常                   │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 步骤2: 定位失败层级                                   │
+├─────────────────────────────────────────────────────┤
+│ • Model层? → 检查 google_aistudio_model.py:177      │
+│ • Document层? → 检查 interactive_document.py:294    │
+│ • Component层? → 检查具体组件的实现                  │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 步骤3: 检查root cause                                │
+├─────────────────────────────────────────────────────┤
+│ • 是否 max_tokens < 256? (Gemini限制)                │
+│ • 是否触发安全过滤? (检查safety_ratings)              │
+│ • 是否 finish_reason 显示 MAX_TOKENS?                │
+│ • 是否没有捕获正确的异常类型?                         │
+│ • 是否没有检查空值?                                   │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 步骤4: 应用对应解决方案                               │
+├─────────────────────────────────────────────────────┤
+│ • max_tokens不足 → 增加到至少256，或实施自适应管理    │
+│ • 安全过滤 → 调整safety_settings或改写prompt         │
+│ • 异常捕获不完整 → 参考方案A修复                      │
+│ • 空值未检查 → 添加if检查或参考方案B实施重试          │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─────────────────────────────────────────────────────┐
+│ 步骤5: 验证修复效果                                   │
+├─────────────────────────────────────────────────────┤
+│ • 运行相同场景测试                                    │
+│ • 监控关键指标（截断率、空响应率、异常率）             │
+│ • 长时间运行稳定性测试（100+ steps）                  │
+└─────────────────────────────────────────────────────┘
+        </div>
+
+        <hr style="margin: 40px 0;">
+
+        <p style="text-align: center; color: #666; font-size: 0.9em;">
+            <strong>文档维护：</strong>基于Concordia源码分析 |
+            <strong>最后更新：</strong>2025-01-10 |
+            <strong>版本：</strong>1.0
+        </p>
+    </div>
+</body>
+</html>
